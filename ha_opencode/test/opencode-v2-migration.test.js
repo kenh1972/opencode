@@ -172,10 +172,13 @@ describe("OpenCode V2 copy-on-write migration", () => {
       "DELETE FROM kv WHERE key = 'migration.v1-v2';",
       "DELETE FROM migration WHERE id = '20260805200742_import_legacy_credentials';",
       "\"\"\")",
-      "c.execute(\"INSERT INTO session (id, project_id, slug, directory, title, version, metadata, cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write, revert, permission, time_created, time_updated, time_compacting, time_archived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)\", ('ses_review', 'missing-project', 'review', '/tmp/review', 'Review', '1', json.dumps({'keep': True}), 99, 98, 97, 96, 95, 94, json.dumps({'messageID': 'old'}), json.dumps([{'permission': '*', 'pattern': '*', 'action': 'deny'}]), 1, 2, 3, 4))",
+      "c.execute(\"INSERT INTO session (id, project_id, slug, directory, title, version, metadata, cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write, revert, permission, time_created, time_updated, time_compacting, time_archived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)\", ('ses_review', 'missing-project', 'review', '/homeassistant', 'Review', '1', json.dumps({'keep': True}), 99, 98, 97, 96, 95, 94, json.dumps({'messageID': 'old'}), json.dumps([{'permission': '*', 'pattern': '*', 'action': 'deny'}]), 1, 2, 3, 4))",
       "message_id = 'msg_000000000040aaaaaaaaaaaaaa'",
+      "assistant_id = 'msg_000000000041aaaaaaaaaaaaaa'",
       "c.execute('INSERT INTO message VALUES (?,?,?,?,?)', (message_id, 'ses_review', 10, 11, sys.argv[2]))",
+      "c.execute('INSERT INTO message VALUES (?,?,?,?,?)', (assistant_id, 'ses_review', 20, 21, sys.argv[4]))",
       "c.execute('INSERT INTO part VALUES (?,?,?,?,?,?)', ('prt_review', message_id, 'ses_review', 10, 11, sys.argv[3]))",
+      "c.execute('INSERT INTO part VALUES (?,?,?,?,?,?)', ('prt_tool', assistant_id, 'ses_review', 20, 21, sys.argv[5]))",
       "c.commit()",
       "c.close()",
     ].join("\n");
@@ -192,6 +195,31 @@ describe("OpenCode V2 copy-on-write migration", () => {
           model: { providerID: "anthropic", modelID: "claude" },
         }),
         JSON.stringify({ type: "text", text: "hello" }),
+        JSON.stringify({
+          role: "assistant",
+          time: { created: 20, completed: 21 },
+          parentID: "msg_000000000040aaaaaaaaaaaaaa",
+          modelID: "claude",
+          providerID: "anthropic",
+          mode: "build",
+          agent: "build",
+          path: { cwd: "/tmp/review", root: "/tmp/review" },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        }),
+        JSON.stringify({
+          type: "tool",
+          callID: "call_read",
+          tool: "read",
+          state: {
+            status: "completed",
+            input: { filePath: "/tmp/review/test.txt" },
+            output: "fixture",
+            title: "Read",
+            metadata: {},
+            time: { start: 20, end: 21 },
+          },
+        }),
       ],
       { encoding: "utf8" },
     );
@@ -216,7 +244,7 @@ describe("OpenCode V2 copy-on-write migration", () => {
     const authBefore = hash(await readFile(auth));
 
     const root = join(sandbox, "message-v2");
-    const result = runMigrator(python, [
+    const prepareArgs = [
       "prepare",
       "--root",
       root,
@@ -228,7 +256,8 @@ describe("OpenCode V2 copy-on-write migration", () => {
       TARGET_VERSION,
       "--timeout",
       "30",
-    ]);
+    ];
+    const result = runMigrator(python, prepareArgs);
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(result.stdout + result.stderr, /e2e-auth-secret|wellknown-token/);
     assert.equal(hash(await readFile(sourceDatabase)), sourceBefore);
@@ -246,8 +275,10 @@ describe("OpenCode V2 copy-on-write migration", () => {
           "message=c.execute(\"SELECT type,data FROM session_message WHERE id='msg_000000000040aaaaaaaaaaaaaa'\").fetchone()",
           "session=c.execute(\"SELECT project_id,metadata,cost,tokens_input,tokens_output,tokens_reasoning,tokens_cache_read,tokens_cache_write,revert,permission,agent,model,time_created,time_updated,time_compacting,time_archived,fork_session_id,fork_boundary,time_idle,time_viewed,idle_outcome,time_suspended,resume_attempts FROM session_v2 WHERE id='ses_review'\").fetchone()",
           "sequence=c.execute(\"SELECT seq,owner_id FROM event_sequence WHERE aggregate_id='ses_review'\").fetchone()",
+          "placement=c.execute(\"SELECT project_id,directory FROM session_v2 WHERE id='ses_review'\").fetchone()",
+          "notice=c.execute(\"SELECT type,data FROM session_message WHERE session_id='ses_review' AND type='system'\").fetchone()",
           "credentials=c.execute('SELECT count(*) FROM credential').fetchone()[0]",
-          "print(json.dumps([[message[0],json.loads(message[1])],[session[0],json.loads(session[1]),*session[2:9],json.loads(session[9]),session[10],json.loads(session[11]),*session[12:]],[*sequence],credentials]))",
+          "print(json.dumps([[message[0],json.loads(message[1])],[session[0],json.loads(session[1]),*session[2:9],json.loads(session[9]),session[10],json.loads(session[11]),*session[12:]],[*sequence],[*placement],[notice[0],json.loads(notice[1])],credentials]))",
           "c.close()",
         ].join("; "),
         database,
@@ -258,7 +289,7 @@ describe("OpenCode V2 copy-on-write migration", () => {
     assert.deepEqual(JSON.parse(inspect.stdout), [
       ["user", { text: "hello", time: { created: 10 } }],
       [
-        "global",
+        "4367e1ff78860babd3300c32613d92cb06a1125b",
         { keep: true },
         0,
         0,
@@ -282,8 +313,53 @@ describe("OpenCode V2 copy-on-write migration", () => {
         null,
         0,
       ],
-      [0, null],
+      [2, null],
+      ["4367e1ff78860babd3300c32613d92cb06a1125b", "/run/opencode-v2/workspace"],
+      [
+        "system",
+        {
+          text: "The available tools have changed.\n\nThe `read` tool now takes `path` instead of `filePath`.",
+          time: { created: 20 },
+        },
+      ],
       0,
+    ]);
+
+    const generationMarker = join(root, "generations", generation, "generation.json");
+    const marker = JSON.parse(await readFile(generationMarker, "utf8"));
+    delete marker.workspace_projection;
+    await writeFile(generationMarker, JSON.stringify(marker));
+    const regressPlacement = spawnSync(
+      python,
+      [
+        "-c",
+        "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute(\"UPDATE session_v2 SET project_id='global',directory='/homeassistant' WHERE id='ses_review'\"); c.commit(); c.close()",
+        database,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(regressPlacement.status, 0, regressPlacement.stderr);
+
+    const repair = runMigrator(python, prepareArgs);
+    assert.equal(repair.status, 0, repair.stderr);
+    const repairedGeneration = JSON.parse(repair.stdout).generation;
+    assert.notEqual(repairedGeneration, generation);
+    assert.equal(JSON.parse(repair.stdout).status, "repaired");
+    assert.deepEqual(await readdir(join(root, "generations")), [repairedGeneration]);
+    const repairedDatabase = join(root, "generations", repairedGeneration, "data", "opencode", "opencode.db");
+    const repairedPlacement = spawnSync(
+      python,
+      [
+        "-c",
+        "import json,sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(json.dumps(c.execute(\"SELECT project_id,directory FROM session_v2 WHERE id='ses_review'\").fetchone())); c.close()",
+        repairedDatabase,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(repairedPlacement.status, 0, repairedPlacement.stderr);
+    assert.deepEqual(JSON.parse(repairedPlacement.stdout), [
+      "4367e1ff78860babd3300c32613d92cb06a1125b",
+      "/run/opencode-v2/workspace",
     ]);
   });
 
@@ -392,9 +468,9 @@ describe("OpenCode V2 copy-on-write migration", () => {
     assert.equal(firstResult.status, "activated");
     assert.match(firstResult.generation, /^[a-f0-9]{32}$/);
 
-    const current = (await readFile(join(root, "current"), "utf8")).trim();
+    let current = (await readFile(join(root, "current"), "utf8")).trim();
     assert.equal(current, firstResult.generation);
-    const generation = join(root, "generations", current);
+    let generation = join(root, "generations", current);
     const journalText = await readFile(join(root, "migration.json"), "utf8");
     const journal = JSON.parse(journalText);
     assert.equal(journal.status, "activated");
@@ -409,13 +485,28 @@ describe("OpenCode V2 copy-on-write migration", () => {
     assert.equal(journal.target.message_count, 0);
     assert.equal(journal.target.validated_content_part_count, 0);
     assert.doesNotMatch(journalText, new RegExp(AUTH_SECRET));
-    const database = join(generation, "data", "opencode", "opencode.db");
+    let database = join(generation, "data", "opencode", "opencode.db");
     await readFile(database);
     const counts = sqliteTableCounts(python, database);
     assert.ok(counts.migration > 0);
     assert.equal(counts.credential, 0);
     assert.equal(counts.session_v2, 0);
     assert.deepEqual(await readdir(join(root, "generations")), [current]);
+
+    const markerPath = join(generation, "generation.json");
+    const marker = JSON.parse(await readFile(markerPath, "utf8"));
+    delete marker.workspace_projection;
+    await writeFile(markerPath, JSON.stringify(marker));
+    const repair = runMigrator(python, args);
+    assert.equal(repair.status, 0, repair.stderr);
+    const repairResult = JSON.parse(repair.stdout);
+    assert.equal(repairResult.status, "repaired");
+    assert.notEqual(repairResult.generation, current);
+    current = repairResult.generation;
+    generation = join(root, "generations", current);
+    database = join(generation, "data", "opencode", "opencode.db");
+    assert.deepEqual(await readdir(join(root, "generations")), [current]);
+    assert.equal(sqliteTableCounts(python, database).session_v2, 0);
 
     const addCredential = spawnSync(
       python,

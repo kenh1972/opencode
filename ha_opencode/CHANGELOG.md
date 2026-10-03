@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Fix V1-to-V2 migration failures with `event_sequence_mismatch` by validating the synthetic tool-compatibility notice added by OpenCode 2.0.22, and relocate migrated `/homeassistant` sessions into the isolated project used by the V2 UI so existing history remains visible. Previously activated generations receive the same placement fix through a validated copy-on-write repair. Watermark failures now report only a hashed session identifier and structural counts, never conversation content ([#158](https://github.com/magnusoverli/opencode/issues/158), [#160](https://github.com/magnusoverli/opencode/issues/160)).
 - Promote beta 3.2.0b8 to stable with hab 1.7.2 native compact discovery, verified dashboard patches and opt-in experimental Assist integration.
 
 ## 3.2.0

@@ -416,6 +416,20 @@ with tempfile.TemporaryDirectory(prefix="opencode-v2-validation-") as temporary:
             "time": {"created": 20, "completed": 21},
         }
         add_target(target, assistant_id, tool_session, "assistant", 1, 20, assistant_target)
+        tool_notice_id = MIGRATOR.synthetic_id(assistant_id, {parent_id, assistant_id})
+        add_target(
+            target,
+            tool_notice_id,
+            tool_session,
+            "system",
+            2,
+            20,
+            {
+                "text": "The available tools have changed.\n\nThe `read` tool now takes `path` instead of `filePath`.",
+                "time": {"created": 20},
+            },
+            updated=21,
+        )
 
         # Subtask-only traffic is intentionally omitted.
         subtask_session = "ses_subtask"
@@ -520,7 +534,7 @@ with tempfile.TemporaryDirectory(prefix="opencode-v2-validation-") as temporary:
         )
         for session_id, watermark in (
             (user_session, 1),
-            (tool_session, 1),
+            (tool_session, 2),
             (subtask_session, -1),
             (compaction_session, 2),
         ):
@@ -544,9 +558,31 @@ with tempfile.TemporaryDirectory(prefix="opencode-v2-validation-") as temporary:
         source_before = source_path.read_bytes()
         assert MIGRATOR.synthetic_id(user_id, {user_id}) == synthetic_id
         assert MIGRATOR.source_content_part_count(source_path) == expected_parts
-        assert MIGRATOR.validate_session_projection(source_path, target_path) == (4, 7, expected_parts)
+        assert MIGRATOR.validate_session_projection(source_path, target_path) == (4, 8, expected_parts)
         assert MIGRATOR.validate_no_credentials(target_path, source_path) == 0
         assert source_path.read_bytes() == source_before
+
+        assert MIGRATOR.legacy_tool_notice([
+            {
+                "type": "assistant",
+                "data": {"content": [
+                    {"type": "tool", "name": name}
+                    for name in ("bash", "task", "apply_patch", "read", "edit", "write", "skill", "todowrite")
+                ]},
+            }
+        ]) == "\n\n".join((
+            "The available tools have changed.",
+            "The following tools were renamed and must be called by their new names: `bash` is now `shell`; `task` is now `subagent`; `apply_patch` is now `patch`.",
+            "The `subagent` tool takes `agent` instead of `subagent_type` and `sessionID` instead of `task_id`.",
+            "The following tools now take `path` instead of `filePath`: `read`, `edit`, `write`.",
+            "The `skill` tool now takes `id` instead of `name`.",
+            "The `todowrite` tool is no longer available and must not be called.",
+        ))
+        assert MIGRATOR.legacy_tool_notice([
+            {"type": "assistant", "data": {"content": [{"type": "tool", "name": "bash"}]}},
+            {"type": "compaction", "data": {}},
+            {"type": "assistant", "data": {"content": [{"type": "tool", "name": "glob"}]}},
+        ]) is None
 
         # Python 3.12+ sum() uses compensated floating-point addition; V2's
         # JavaScript reduce() adds sequentially. Eleven 0.1-cost assistant
@@ -633,19 +669,29 @@ with tempfile.TemporaryDirectory(prefix="opencode-v2-validation-") as temporary:
             "UPDATE event_sequence SET seq=99 WHERE aggregate_id=?", (user_session,)
         )
         target.commit()
-        expect_error(
+        error = expect_error(
             "event_sequence_mismatch",
             lambda: MIGRATOR.validate_session_projection(source_path, target_path),
         )
+        assert error.details == (
+            f"session_hash={MIGRATOR.hashlib.sha256(user_session.encode()).hexdigest()[:12]}",
+            "source_event_count=2",
+            "converted_event_count=2",
+            "expected_sequence=1",
+            "converted_sequence=99",
+            "owner_present=false",
+        )
+        assert user_session not in " ".join(error.details)
         target.execute(
             "UPDATE event_sequence SET seq=1, owner_id='wrong' WHERE aggregate_id=?",
             (user_session,),
         )
         target.commit()
-        expect_error(
+        error = expect_error(
             "event_sequence_mismatch",
             lambda: MIGRATOR.validate_session_projection(source_path, target_path),
         )
+        assert error.details[-1] == "owner_present=true"
         target.execute(
             "UPDATE event_sequence SET owner_id=NULL WHERE aggregate_id=?", (user_session,)
         )
@@ -743,7 +789,7 @@ with tempfile.TemporaryDirectory(prefix="opencode-v2-validation-") as temporary:
         target.execute("INSERT INTO event_sequence VALUES (?,?,NULL)", (tied, 1))
         source.commit()
         target.commit()
-        assert MIGRATOR.validate_session_projection(source_path, target_path) == (5, 9, expected_parts + 2)
+        assert MIGRATOR.validate_session_projection(source_path, target_path) == (5, 10, expected_parts + 2)
     finally:
         source.close()
         target.close()
