@@ -1,5 +1,5 @@
 {
-  "revision": "90726f9949da3408b2baf0f997e24bd71455946e",
+  "revision": "74b79d41eac44ff38790c66f238050936083e0bb",
   "source": "packages/ui/src/lib/i18n/messages/*.ts: opencodeUpdate.toast.available.manualDescription",
   "messages": {
     "nl": "Versie {version} beschikbaar. Werk OpenCode bij op de manier waarop u het hebt geïnstalleerd en herstart daarna OpenChamber.",

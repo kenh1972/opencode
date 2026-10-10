@@ -9,10 +9,10 @@ build_from:
 args:
   NODE_VERSION: "24.21.0"
   # The only OpenCode runtime in this channel; CLI and plugin pins must match.
-  OPENCODE_V2_VERSION: "2.0.22"
+  OPENCODE_V2_VERSION: "2.0.26"
   # Release identity and immutable source; backend CLI remains pinned separately.
-  OPENCHAMBER_VERSION: "2.1.0"
-  OPENCHAMBER_REVISION: "90726f9949da3408b2baf0f997e24bd71455946e"
+  OPENCHAMBER_VERSION: "2.2.0"
+  OPENCHAMBER_REVISION: "74b79d41eac44ff38790c66f238050936083e0bb"
   PPQ_PROXY_VERSION: "0.1.0"
   TSX_VERSION: "4.23.15"
   TTYD_VERSION: "1.7.7"

@@ -128,6 +128,7 @@ at `/usr/share/doc/ha-opencode/NOTICE` and in this repository's
 
 ## Current Beta Changes
 
+- **3.2.1b1 qualification**: Pins OpenCode CLI/plugin `2.0.26`, OpenChamber `2.2.0` and Puppeteer `25.13.0`. Upgrade tests include existing `2.0.22` generations. Qualification checks the versioned image installed through Supervisor, its actual image ID, production npm audits, `/data` temporary-directory regressions, and Chromium screenshots.
 - **3.2.1b0 recovery qualification**: Validate the OpenCode 2.0.22 legacy-tool notice, repair migrated `/homeassistant` placement before first-startup activation, and recover an older generation's missing converter home. Recovery uses validated private copies; existing V1 data is retained. Beta and stable have separate storage, so installing beta does not import or repair stable history. Keep a Home Assistant app/data backup before testing an upgrade.
 - **Opt-in relay reconnection**: `openchamber_relay_host` restores passive reconnection with LAN web UI disabled. LAN-enabled clients still expire at restart; see [OpenChamber Relay Hosting](#openchamber-relay-hosting).
 - **Stable 3.1.0 baseline**: Includes stable's complete large-HAB-output exports, runtime-aware template validation, 32 GiB history-migration preflight and startup progress messages.
@@ -265,6 +266,21 @@ Opening OpenChamber through Ingress does not attach that desktop browser. The
 packaged Chromium used by the optional HA `screenshot_url` tool is a separate
 capability. Desktop-browser attachment to the beta app's managed server is not
 yet qualified; do not expose a Chromium debugging port as a workaround.
+
+For Home Assistant 2026.10 app pages, use `/app/<slug>` for the app UI and
+`/config/app/<slug>/info` for its information page. Older `/hassio/ingress/...`
+and `/hassio/addon/...` frontend paths can return 404. Use the path from the
+current Home Assistant UI and its final direct internal origin.
+
+### Beta dependency audit scope
+
+Qualification audits the installed OpenCode, MCP, YAML LSP and PPQ npm trees,
+plus OpenChamber's actual installed packages. The latter uses explicit security
+overrides and a committed lock. The unpatched upstream `braces@3.0.3` advisory
+has a tested vendor depth-limit mitigation and remains visible in reports;
+it is not described as a zero-finding audit. See
+[security patch provenance](rootfs/opt/openchamber/SECURITY-PATCHES.md).
+OS packages and JavaScript embedded in browser bundles are outside these audits.
 
 ### Pasting dashboard screenshots
 

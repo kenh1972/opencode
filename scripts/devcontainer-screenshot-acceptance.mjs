@@ -6,9 +6,12 @@
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import WebSocket from "/opt/ha-mcp-server/node_modules/ws/wrapper.mjs";
-import puppeteer from "/opt/ha-mcp-server/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js";
+const require = createRequire("/opt/ha-mcp-server/package.json");
+const { default: puppeteer } = await import(pathToFileURL(require.resolve("puppeteer-core")).href);
 import { Client } from "/opt/ha-mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js";
 import { StdioClientTransport } from "/opt/ha-mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js";
 import { captureHomeAssistantPage } from "/opt/ha-mcp-server/lib/screenshot.js";
@@ -152,6 +155,21 @@ try {
   assert.equal(evidence.at(-1).connected, true);
   writeFileSync("/tmp/screenshot-fixed-settings.png", Buffer.from(settings.image, "base64"));
   console.log(`PASS: authenticated Settings capture at ${settings.finalPath}`);
+
+  for (const [label, path] of [
+    ["app-info", "/config/app/local_ha_opencode_beta/info"],
+    ["app-ingress", "/app/local_ha_opencode_beta"],
+  ]) {
+    const capture = await captureHomeAssistantPage(observedBrowser, { ...captureOptions, urlPath: path, waitSeconds: 5 });
+    assert.equal(capture.finalPath, path);
+    assert.equal(evidence.at(-1).connected, true);
+    writeFileSync(`/tmp/screenshot-fixed-${label}.png`, Buffer.from(capture.image, "base64"));
+    console.log(`PASS: authenticated current HA app route ${path}`);
+  }
+  for (const path of ["/hassio/ingress/local_ha_opencode_beta", "/hassio/addon/local_ha_opencode_beta/info"]) {
+    await assert.rejects(captureHomeAssistantPage(observedBrowser, { ...captureOptions, urlPath: path }), /HTTP 404/);
+  }
+  console.log("PASS: obsolete /hassio frontend routes report HTTP 404 rather than a successful screenshot");
 
   await assert.rejects(captureHomeAssistantPage(observedBrowser, {
     ...captureOptions, token: "deliberately-invalid-test-token", timeoutMs: 5000,

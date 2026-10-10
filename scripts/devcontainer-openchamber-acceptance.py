@@ -66,7 +66,7 @@ def ready():
         result = subprocess.run(["docker", "exec", APP, "curl", "-fsS", "--max-time", "2", "http://127.0.0.1:3010/api/info"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             try:
-                if json.loads(result.stdout).get("version") == "2.0.22":
+                if json.loads(result.stdout).get("version") == expected_version:
                     return
             except (ValueError, AttributeError):
                 pass
@@ -89,6 +89,7 @@ def set_lsp_running(running):
     raise AssertionError("Supervised LSP worker did not reach the requested acceptance state")
 
 
+expected_version = app("cat", "/usr/local/share/opencode-v2-certified-version").strip()
 original = json.loads(command("ha", "--raw-json", "apps", "info", SLUG))["data"]["options"]["interface_mode"]
 lsp_suspended = False
 try:
@@ -142,9 +143,10 @@ with urllib.request.urlopen(req, timeout=10) as response:
         lsp_suspended = True
         set_lsp_running(False)
     try:
+        core_port = json.loads(command("ha", "--raw-json", "core", "info"))["data"]["port"]
         browser = subprocess.run(["docker", "exec", "-i", APP, "node", "/local_apps/opencode/scripts/devcontainer-openchamber-browser.mjs"],
-                                 input=json.dumps({"entry": entry, "session": session, "livePrompt": os.environ.get("HA_OPENCHAMBER_MODEL_ACCEPTANCE") == "1",
-                                                   "editorLspMode": EDITOR_MODE}),
+                                 input=json.dumps({"entry": entry, "session": session, "corePort": core_port, "livePrompt": os.environ.get("HA_OPENCHAMBER_MODEL_ACCEPTANCE") == "1",
+                                                    "editorLspMode": EDITOR_MODE, "editorLspArtifactDirectory": os.environ.get("HA_EDITOR_LSP_ARTIFACT_DIRECTORY")}),
                                  capture_output=True, text=True, timeout=180)
     except subprocess.TimeoutExpired as error:
         # Keep bounded checkpoints on timeout too; restoration below restarts the
@@ -159,6 +161,7 @@ with urllib.request.urlopen(req, timeout=10) as response:
                 print(line, flush=True)
         locations = re.findall(r"devcontainer-openchamber[\w-]*\.mjs:\d+:\d+", browser.stderr)
         kinds = re.findall(r"^(?:AssertionError|TimeoutError|TypeError|ReferenceError|Error)\b", browser.stderr, re.M)
+        kinds += re.findall(r"net::[A-Z_]+", browser.stderr)
         markers = [word for word in ("Timeout", "Target closed", "Protocol error", "out of memory", "SIGKILL", "SIGABRT", "AssertionError", "Error") if word in browser.stderr]
         print(f"Browser failure: exit={browser.returncode}, stderr_bytes={len(browser.stderr.encode())}, "
               + ", ".join(dict.fromkeys(kinds + locations + markers)), flush=True)

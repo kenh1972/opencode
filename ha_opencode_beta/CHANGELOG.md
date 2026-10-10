@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## 3.2.1b1
+
+- Pass installed Home Assistant qualification for dependency audits, Ingress/screenshots, HTTPS LAN, lifecycle and live/unavailable editor behavior; public-relay phone pairing remains unverified.
+- Make installed browser qualification use Supervisor's actual Home Assistant port.
+- Expand beta dependency qualification to OpenChamber's shipped packages, with explicit security overrides and a reproducible lock.
+- Preserve trusted server Git settings with simple-git 4 while retaining project-variable and command-injection guards.
+- Bound the unfixed upstream braces recursion advisory with a tested vendor patch, retaining the advisory visibly in audit reports.
+- Remove the traced OpenChamber proxy `DEP0060` warning and fail proxy build tests on future deprecations.
+- Qualify authenticated screenshots against current Home Assistant app routes; obsolete `/hassio/...` frontend paths correctly return 404.
+- Verify OpenChamber 2.2.0 preserves existing relay identities through its key-store migration and app restarts.
+- Retain OpenChamber 2.2.0's upstream sub-path URL fix for Home Assistant Ingress and exercise its URL regression tests during image builds.
+- Qualify OpenCode CLI/plugin 2.0.26, OpenChamber 2.2.0 and Puppeteer 25.13.0 for beta 3.2.1b1, with production audit and installed-image acceptance.
+- Fix startup-error tests with temporary storage under /data and explicitly skip compiler fixtures in production while requiring them in CI.
+- Add installed-image audit evidence with exact version/image checks and preserve native MCP/context coverage with OpenCode's host-provided plugin API.
 - Make supervised browser acceptance follow Home Assistant's redirected Ingress origin.
 
 ## 3.2.1b0

@@ -93,7 +93,7 @@ try {
   });
   let backend = startBackend();
   const client = OpenCode.make({ baseUrl: 'http://127.0.0.1:4100', headers });
-  await wait(async () => (await client.server.info()).version === '2.0.22', 'backend startup');
+  await wait(async () => (await client.server.info()).version === '2.0.26', 'backend startup');
   const credentials = await client.credential.create({ integrationID: 'fixture', value: { type: 'key', key: 'fixture-persisted-key' } });
   await mkdir(`${root}/ui`);
   // Exercise the existing-installation settings migration as well as a new chat.
@@ -167,7 +167,7 @@ try {
   assert.equal((await client.session.get({ sessionID: id })).id, id, 'Stopping UI must leave backend/history running');
   await stop(backend);
   backend = startBackend();
-  await wait(async () => (await client.server.info()).version === '2.0.22', 'backend restart');
+  await wait(async () => (await client.server.info()).version === '2.0.26', 'backend restart');
   ui = startUi();
   await wait(async () => (await fetch('http://127.0.0.1:3010/health')).ok, 'UI restart');
   assert.equal((await client.session.get({ sessionID: id })).id, id);

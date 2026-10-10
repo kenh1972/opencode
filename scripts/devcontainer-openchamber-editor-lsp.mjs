@@ -11,9 +11,12 @@ import { once } from 'node:events';
 // bound to loopback and limited to this Ingress prefix; not an auth bypass.
 export async function checkEditorLsp(options) {
   assert.match(options.base, /^\/api\/hassio_ingress\/[^/]+\/$/);
+  const core = new URL(options.page.url());
+  assert.equal(core.hostname, 'homeassistant');
+  assert.equal(core.protocol, 'http:');
   const proxy = http.createServer((req, res) => {
     if (!req.url.startsWith(options.base)) { res.writeHead(404); res.end(); return; }
-    const upstream = http.request({ hostname: 'homeassistant', port: 8123,
+    const upstream = http.request({ hostname: core.hostname, port: core.port || 80,
       method: req.method, path: req.url, headers: req.headers }, (response) => {
       res.writeHead(response.statusCode, response.headers);
       response.pipe(res);
@@ -55,7 +58,7 @@ async function runEditorLsp({ browser, page, base, session, origin, mode = 'live
     const context = await browser.createBrowserContext();
     const isolated = await context.newPage();
     await isolated.setViewport({ width: 1440, height: 1000 });
-    await isolated.setCookie({ name: 'ingress_session', value: session, domain: new URL(origin).hostname, path: '/' });
+    await context.setCookie({ name: 'ingress_session', value: session, domain: new URL(origin).hostname, path: '/' });
     const project = { id: 'ha-editor-i1-fixture', path: '/homeassistant', label: 'HA editor acceptance' };
     let settings = { ...baseline, projects: [project], activeProjectId: project.id,
       autoSaveEnabled: false, showOpenCodeUpdateNotifications: false, settingsDefaultFileViewerPreview: false };
@@ -123,7 +126,9 @@ async function runEditorLsp({ browser, page, base, session, origin, mode = 'live
       if (![base + 'api/ha-editor-lsp/diagnostics', base + 'api/ha-editor-lsp/completions'].includes(path)) return;
       const task = (async () => {
         const body = JSON.parse(response.request().postData() || '{}');
-        const reply = await response.json().catch(() => null);
+        // Error bodies forwarded by Core need not be JSON or fully buffered.
+        // The unavailable contract is the HTTP status, not an error-body read.
+        const reply = response.ok() ? await response.json().catch(() => null) : null;
         responses.push({ operation: path.endsWith('/diagnostics') ? 'diagnostics' : 'completions',
           status: response.status(), text: body.text, version: body.version, editorId: body.editorId, reply });
       })().catch(() => { interceptionFailed = true; });
@@ -147,7 +152,7 @@ async function runEditorLsp({ browser, page, base, session, origin, mode = 'live
         // The app shell announces page visibility and attempts to mint asset URL
         // tokens even for this virtual text file. Keep both inside the fixture:
         // no server visibility mutation and no real or synthetic credential.
-        if (sameOrigin && method === 'POST' && url.pathname === base + 'api/push/visibility') {
+        if (sameOrigin && method === 'POST' && [base + 'api/push/visibility', base + 'api/tracked-items/interest'].includes(url.pathname)) {
           return request.respond({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
         }
         if (sameOrigin && method === 'POST' && url.pathname === base + 'auth/url-token') {
@@ -180,12 +185,25 @@ async function runEditorLsp({ browser, page, base, session, origin, mode = 'live
     });
 
     async function close() {
-      await Promise.all([...responseTasks]);
+      // Closing first aborts incomplete response bodies (including error/SSE
+      // responses) so cleanup cannot hide an assertion behind a driver timeout.
       await context.close();
+      await Promise.all([...responseTasks]);
     }
     try {
       const response = await isolated.goto(origin + base, { waitUntil: 'domcontentloaded', timeout: 30000 });
       assert.equal(response.status(), 200, 'Editor fixture must load through Core Ingress');
+      // 2.2.0 starts a Chat draft independently of the selected project. Select
+      // the fixture through the rendered picker so its context panel is active.
+      const chooseProject = await isolated.waitForSelector('::-p-text(Choose project)', { timeout: 25000 });
+      await chooseProject.evaluate(element => element.closest('button').focus());
+      await isolated.keyboard.press('Enter');
+      console.log('CHECK: editor project picker opened');
+      await isolated.waitForFunction(() => [...document.querySelectorAll('[role="option"]')]
+        .some(element => element.textContent.includes('HA editor acceptance')), { timeout: 10000 });
+      await isolated.evaluate(() => [...document.querySelectorAll('[role="option"]')]
+        .find(element => element.textContent.includes('HA editor acceptance')).click());
+      console.log('CHECK: editor fixture project selected');
       await isolated.waitForFunction(() => window.__haEditorFixture?.installed && window.__haEditorFixture.reads > 0,
         { timeout: 25000 });
       return { isolated, requests, responses, close,
@@ -199,6 +217,17 @@ async function runEditorLsp({ browser, page, base, session, origin, mode = 'live
         },
       };
     } catch (error) {
+      const state = await isolated.evaluate(() => ({
+        fixture: window.__haEditorFixture,
+        editors: document.querySelectorAll('.cm-editor').length,
+        rootChildren: document.querySelector('#root')?.children.length || 0,
+        uiVersion: JSON.parse(localStorage.getItem('ui-store') || '{}').version,
+        fixtureDirectorySelected: localStorage.getItem('lastDirectory') === '/homeassistant',
+        projectSelected: localStorage.getItem('activeProjectId') === 'ha-editor-i1-fixture',
+        fixturePanelPresent: Boolean(JSON.parse(localStorage.getItem('ui-store') || '{}').state?.contextPanelByDirectory?.['/homeassistant']),
+      })).catch(() => null);
+      if (artifactDirectory) await isolated.screenshot({ path: join(artifactDirectory, 'editor-initialization.png') }).catch(() => {});
+      console.log('CHECK: editor initialization state ' + JSON.stringify({ ...state, errors, blockedWriteKinds: [...blockedWriteKinds] }));
       await close();
       // Do not include URLs, cookies, response bodies or backend errors in logs.
       throw new Error('Rendered editor fixture did not initialize; verify the pinned FilesView/store contracts', { cause: new Error(error.name) });
@@ -271,6 +300,7 @@ async function runEditorLsp({ browser, page, base, session, origin, mode = 'live
     if (mode === 'unavailable') {
       await status('HA YAML: unavailable');
       console.log('CHECK: editor unavailable status rendered');
+      console.log('CHECK: unavailable editor HTTP responses ' + JSON.stringify(current.responses.map(({ operation, status }) => ({ operation, status }))));
       assert.ok(current.responses.some((entry) => entry.operation === 'diagnostics' && entry.status === 503),
         'Unavailable mode requires a real HTTP 503 from the bridge, not a fixture response');
       await screenshot('worker-unavailable');

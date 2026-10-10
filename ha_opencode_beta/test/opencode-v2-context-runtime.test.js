@@ -52,7 +52,7 @@ test("pinned V2 sends managed context once on initial and tool-continuation HTTP
     await writeFile(briefing, marker);
     await writeFile(join(root, "plugin/index.js"), `
       import { appendFileSync } from "node:fs";
-      import { Plugin } from ${JSON.stringify(pathToFileURL(join(runtime, "node_modules/@opencode/plugin/dist/promise/index.js")).href)};
+      import { Plugin } from "@opencode/plugin";
       import { createContextSetup, readContextSource } from ${JSON.stringify(pathToFileURL(join(runtime, "context.js")).href)};
       import { createLspSetup } from ${JSON.stringify(pathToFileURL(join(runtime, "lsp.js")).href)};
       export default Plugin.define({ id: "fixture.context", async setup(ctx) {

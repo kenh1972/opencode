@@ -6,12 +6,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { prepareUserConfig } from "../rootfs/opt/opencode-v2-homeassistant/user-config.js";
+import { requireCompiler } from "./helpers/native-compiler.js";
 
 const launcher = fileURLToPath(new URL("../rootfs/opt/opencode-v2-homeassistant/secure-launcher.c", import.meta.url));
 
 test("native launcher loads only the secured provider environment and rejects unsafe files/entries", {
-  skip: process.platform !== "linux" || process.getuid?.() !== 0 ? "requires Linux root and a C compiler (run in the boundary-test container)" : false,
-}, async () => {
+  skip: process.platform !== "linux" || process.getuid?.() !== 0 ? "requires Linux root and a C compiler (run in the CI build environment)" : false,
+}, async (t) => {
+  if (!requireCompiler(t)) return;
   const root = await mkdtemp(join(tmpdir(), "ha-provider-env-"));
   try {
     const runtime = join(root, "runtime");

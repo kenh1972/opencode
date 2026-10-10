@@ -4,6 +4,8 @@
 Temporarily enables the beta LAN frontends, uses a local certificate-verified
 HTTPS reverse proxy, rotates credentials through an app restart, then restores
 the original options. Requires a prior Supervisor backup. Prints no credentials.
+Set HA_LAN_EXPECTED_VERSION to the candidate's build.yaml OPENCODE_V2_VERSION
+(for example, 2.0.26); this is checked before any test configuration changes.
 """
 import base64
 import datetime
@@ -23,6 +25,9 @@ import urllib.request
 
 if os.environ.get("HA_LAN_ACCEPTANCE") != "1":
     raise SystemExit("Set HA_LAN_ACCEPTANCE=1 inside the official devcontainer Core")
+EXPECTED_VERSION = os.environ.get("HA_LAN_EXPECTED_VERSION")
+if not EXPECTED_VERSION:
+    raise SystemExit("Set HA_LAN_EXPECTED_VERSION to the candidate's pinned OpenCode version before LAN qualification")
 HOST = str(ipaddress.ip_address(os.environ["HA_LAN_APP_HOST"]))
 SLUG = "local_ha_opencode_beta"
 BASE = "http://supervisor/addons/" + SLUG
@@ -155,7 +160,7 @@ with tempfile.TemporaryDirectory(prefix="ha-lan-acceptance-") as temp:
         restart(options)
         stage = "API authentication and origins"
         status, _, payload = request(0, "/api/info", headers={"Authorization": basic(password)})
-        assert status == 200 and b"2.0.22" in payload
+        assert status == 200 and json.loads(payload).get("version") == EXPECTED_VERSION
         assert request(0, "/api/info", headers={"Authorization": basic(password), "Origin": "https://evil.test"})[0] == 403
         assert request(0, "/api/info", method="OPTIONS", headers={"Origin": "https://client.fixture.test", "Access-Control-Request-Method": "POST"})[0] == 204
         assert request(1, "/api/ha-editor-lsp/diagnostics", method="POST", body={}, headers={"Origin": origins[1]})[0] == 403
