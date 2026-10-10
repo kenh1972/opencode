@@ -1,6 +1,6 @@
 # Global ARGs (available in FROM instructions)
 ARG BUILD_FROM=ghcr.io/home-assistant/base-debian:trixie
-ARG NODE_VERSION=24.15.0
+ARG NODE_VERSION=24.21.0
 
 # Home Assistant does not publish a Node-specific Debian base. Keep its s6 and
 # Bashio runtime as the final base, and copy an exact official Node toolchain in.
@@ -85,8 +85,8 @@ ARG TTYD_VERSION=1.7.7
 ARG OPENCODE_V2_VERSION=2.0.22
 ARG OPENCHAMBER_VERSION=2.1.0
 ARG PPQ_PROXY_VERSION=0.1.0
-ARG TSX_VERSION=4.20.6
-ARG YQ_VERSION=v4.53.3
+ARG TSX_VERSION=4.23.15
+ARG YQ_VERSION=v4.54.1
 ARG ZIGPORTER_VERSION=1.4.2
 
 # Environment for better Node.js performance
