@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { requireCompiler } from "./helpers/native-compiler.js";
 
-test("pre-init identifies missing mounts, non-directories and ownership mismatches without modifying them", { skip: process.platform !== "linux" }, async () => {
+test("pre-init identifies missing mounts, non-directories and ownership mismatches without modifying them", { skip: process.platform !== "linux" }, async (t) => {
+  if (!requireCompiler(t)) return;
   const root = await mkdtemp(join(tmpdir(), "ha-container-init-"));
   try {
     const source = fileURLToPath(new URL("../rootfs/opt/opencode-v2-homeassistant/container-init.c", import.meta.url));

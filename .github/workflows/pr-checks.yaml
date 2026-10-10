@@ -42,6 +42,11 @@ jobs:
         working-directory: ha_opencode_beta/rootfs/opt/ha-mcp-server
         run: npm install --ignore-scripts --no-audit --no-fund
 
+      - name: Audit beta production runtime and screenshot dependencies
+        run: |
+          npm audit --omit=dev --audit-level=low --prefix ha_opencode_beta/rootfs/opt/opencode-v2-homeassistant
+          npm audit --omit=dev --audit-level=low --prefix ha_opencode_beta/rootfs/opt/ha-mcp-server
+
       - name: Prepare isolated editor contract dependencies
         run: |
           editor_deps="${RUNNER_TEMP}/ha-editor-contracts"
@@ -56,6 +61,7 @@ jobs:
 
       - name: Beta add-on contract tests
         env:
+          HA_NATIVE_TESTS_REQUIRED: "1"
           HA_ASSIST_BROWSER_EXECUTABLE: /usr/bin/google-chrome
         run: node --test "ha_opencode_beta/test/*.test.js"
 
@@ -63,7 +69,7 @@ jobs:
         run: sudo "$(command -v node)" --test ha_opencode_beta/test/opencode-v2-external-mcp.test.js
 
       - name: Native provider credential loader boundary
-        run: sudo "$(command -v node)" --test ha_opencode_beta/test/opencode-v2-provider-environment.test.js
+        run: sudo env HA_NATIVE_TESTS_REQUIRED=1 "$(command -v node)" --test ha_opencode_beta/test/opencode-v2-provider-environment.test.js
 
       - name: Install exact V2 stable dependency set for integrated contracts
         working-directory: ha_opencode/rootfs/opt/opencode-v2-homeassistant

@@ -10,7 +10,7 @@ FROM node:${NODE_VERSION}-trixie-slim AS node-runtime
 # installed. Build against the upstream lock, on the target's native CI runner.
 FROM oven/bun:1.4.2-slim@sha256:cb3bbbb08e13a4a2ff400f24c7a2a1d5efa83f6ef8544d52d95a519631e2fc61 AS openchamber-bun
 FROM node-runtime AS openchamber-builder
-ARG OPENCHAMBER_REVISION=90726f9949da3408b2baf0f997e24bd71455946e
+ARG OPENCHAMBER_REVISION=74b79d41eac44ff38790c66f238050936083e0bb
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git python3 g++ make \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=openchamber-bun /usr/local/bin/bun /usr/local/bin/bun
@@ -83,8 +83,8 @@ ARG NODE_VERSION
 ARG ADDON_CHANNEL=stable
 ARG TTYD_VERSION=1.7.7
 # One pinned V2 runtime and its matching plugin API. No V1 runtime is installed.
-ARG OPENCODE_V2_VERSION=2.0.22
-ARG OPENCHAMBER_VERSION=2.1.0
+ARG OPENCODE_V2_VERSION=2.0.26
+ARG OPENCHAMBER_VERSION=2.2.0
 ARG PPQ_PROXY_VERSION=0.1.0
 ARG TSX_VERSION=4.23.15
 ARG YQ_VERSION=v4.54.1

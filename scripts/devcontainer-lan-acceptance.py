@@ -155,7 +155,7 @@ with tempfile.TemporaryDirectory(prefix="ha-lan-acceptance-") as temp:
         restart(options)
         stage = "API authentication and origins"
         status, _, payload = request(0, "/api/info", headers={"Authorization": basic(password)})
-        assert status == 200 and b"2.0.22" in payload
+        assert status == 200 and json.loads(payload).get("version") == os.environ["HA_LAN_EXPECTED_VERSION"]
         assert request(0, "/api/info", headers={"Authorization": basic(password), "Origin": "https://evil.test"})[0] == 403
         assert request(0, "/api/info", method="OPTIONS", headers={"Origin": "https://client.fixture.test", "Access-Control-Request-Method": "POST"})[0] == 204
         assert request(1, "/api/ha-editor-lsp/diagnostics", method="POST", body={}, headers={"Origin": origins[1]})[0] == 403

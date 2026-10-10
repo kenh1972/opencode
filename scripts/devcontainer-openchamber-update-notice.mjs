@@ -66,7 +66,7 @@ export async function checkManagedUpdateNotice({ browser, page, base, session })
           upgradeReads++;
           await request.respond({
             status: 200, contentType: "application/json",
-            body: JSON.stringify({ available: true, currentVersion: "2.0.22", latestVersion: VERSION, upgrade: { supported: false, manager: "external", reason: "external" } }),
+            body: JSON.stringify({ available: true, currentVersion: "2.0.26", latestVersion: VERSION, upgrade: { supported: false, manager: "external", reason: "external" } }),
           });
           return;
         }
