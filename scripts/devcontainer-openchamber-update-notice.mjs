@@ -7,6 +7,12 @@ const DESCRIPTION = `OpenCode ${VERSION} is available upstream. Home Assistant S
 // Exercise the built frontend, not a rendered fixture. Only the newer-upstream
 // response and preference persistence are simulated; real settings stay intact.
 export async function checkManagedUpdateNotice({ browser, page, base, session }) {
+  // Core may redirect its default 8123 listener to the devcontainer's port 80.
+  // Intercept the origin actually serving the page, not the initial entry URL.
+  const entry = new URL(base, page.url());
+  assert.equal(entry.protocol, "http:");
+  assert.equal(entry.hostname, "homeassistant");
+  assert.ok(["", "8123"].includes(entry.port));
   const baseline = await page.evaluate(async (base) => {
     const response = await fetch(base + "api/config/settings?surface=web", { signal: AbortSignal.timeout(10000) });
     if (!response.ok) return null;
@@ -29,6 +35,8 @@ export async function checkManagedUpdateNotice({ browser, page, base, session })
       }
     });
     let installRequests = 0;
+    let settingsReads = 0;
+    let upgradeReads = 0;
     let interceptionFailed = false;
     const errors = [];
     isolated.on("pageerror", (error) => errors.push(error.name));
@@ -43,7 +51,8 @@ export async function checkManagedUpdateNotice({ browser, page, base, session })
           await request.abort();
           return;
         }
-        if (url.origin === "http://homeassistant:8123" && path === base + "api/config/settings") {
+        if (url.origin === entry.origin && path === base + "api/config/settings") {
+          if (method === "GET") settingsReads++;
           if (method === "PUT") {
             const changes = JSON.parse(request.postData() || "{}");
             settings = { ...settings, ...changes };
@@ -53,7 +62,8 @@ export async function checkManagedUpdateNotice({ browser, page, base, session })
           await request.respond({ status: 200, contentType: "application/json", body: JSON.stringify(settings) });
           return;
         }
-        if (url.origin === "http://homeassistant:8123" && path === base + "api/opencode/upgrade-status" && method === "GET") {
+        if (url.origin === entry.origin && path === base + "api/opencode/upgrade-status" && method === "GET") {
+          upgradeReads++;
           await request.respond({
             status: 200, contentType: "application/json",
             body: JSON.stringify({ available: true, currentVersion: "2.0.22", latestVersion: VERSION, upgrade: { supported: false, manager: "external", reason: "external" } }),
@@ -72,14 +82,22 @@ export async function checkManagedUpdateNotice({ browser, page, base, session })
         await request.abort().catch(() => {});
       });
     });
-    const entry = `http://homeassistant:8123${base}`;
-    const response = await isolated.goto(entry, { waitUntil: "domcontentloaded", timeout: 30000 });
+    const response = await isolated.goto(entry.href, { waitUntil: "domcontentloaded", timeout: 30000 });
     assert.equal(response.status(), 200, "Update-notice fixture must load through Ingress");
     console.log("CHECK: update-notice isolated page loaded");
     const toast = await isolated.waitForFunction((description) =>
       [...document.querySelectorAll("[data-sonner-toast]")].find((element) =>
         element.querySelector("[data-description]")?.textContent === description
-      ), { timeout: 20000 }, DESCRIPTION);
+      ), { timeout: 20000 }, DESCRIPTION).catch(async (error) => {
+        const state = await isolated.evaluate(() => ({
+          hydrated: window.__i8SettingsSynced === true,
+          rootReady: !!document.querySelector("#root")?.children.length,
+          toastCount: document.querySelectorAll("[data-sonner-toast]").length,
+          notifications: JSON.parse(localStorage.getItem("ui-store") || "{}").state?.showOpenCodeUpdateNotifications,
+        })).catch(() => null);
+        console.log("CHECK: update-notice timeout " + JSON.stringify({ settingsReads, upgradeReads, interceptionFailed, errors, state }));
+        throw error;
+      });
     const buttons = await toast.evaluate((element) => [...element.querySelectorAll("button")].map((button) => button.textContent.trim()));
     assert.deepEqual(buttons, ["Dismiss"], "Managed update notice must offer only Dismiss");
     console.log("CHECK: update-notice guidance and Dismiss rendered");

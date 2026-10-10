@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Make supervised browser acceptance follow Home Assistant's redirected Ingress origin.
+
 ## 3.2.1b0
 
 - Beta qualification release; stable remains 3.2.0. Beta and stable retain separate histories and settings: installing beta does not import or repair stable data.
