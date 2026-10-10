@@ -50,7 +50,8 @@ RUN node -e 'require("./packages/web/node_modules/node-pty").spawn("/bin/true", 
     && node --input-type=module -e 'await import("./packages/web/server/index.js"); process.exit(0)'
 RUN --mount=type=bind,source=test/openchamber-request-body.mjs,target=/tmp/openchamber-request-body.mjs,readonly \
     --mount=type=bind,source=test/openchamber-lan-auth.mjs,target=/tmp/openchamber-lan-auth.mjs,readonly \
-    node --test /tmp/openchamber-request-body.mjs /tmp/openchamber-lan-auth.mjs
+    --mount=type=bind,source=test/openchamber-relay-host.mjs,target=/tmp/openchamber-relay-host.mjs,readonly \
+    node --test /tmp/openchamber-request-body.mjs /tmp/openchamber-lan-auth.mjs /tmp/openchamber-relay-host.mjs
 
 ## Build hab CLI from source (pinned release)
 # Pinned to the build host's platform — Go cross-compiles via GOARCH below,

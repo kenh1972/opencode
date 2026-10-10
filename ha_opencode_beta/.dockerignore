@@ -34,6 +34,7 @@ rootfs/opt/*/README.md
 !test/v2-forward-fixture.py
 !test/openchamber-request-body.mjs
 !test/openchamber-lan-auth.mjs
+!test/openchamber-relay-host.mjs
 !test/openchamber-usage.mjs
 !test/openchamber-model-fixture.cjs
 !test/openchamber-model-regressions.inc.ts

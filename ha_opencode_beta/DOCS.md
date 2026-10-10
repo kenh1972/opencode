@@ -754,6 +754,27 @@ existing streams; sign in or pair again. Conversation history, UI settings and
 provider credentials remain persistent. The editor LSP bridge and HA inbound-MCP
 Ingress routes are not exposed on the LAN frontends.
 
+## OpenChamber Relay Hosting
+
+Set `interface_mode: openchamber` and enable `openchamber_relay_host` to let the
+managed instance automatically reconnect to its configured relay when an active
+relay-paired client or pending pairing needs it. The default endpoint is the
+third-party service `wss://relay.openchamber.dev/ws`. With LAN web UI disabled,
+relay identity and pairing records persist in `/data/.config/openchamber`, so
+paired devices can reconnect after app restarts and updates without pairing again.
+
+**LAN web UI limitation:** when `enable_openchamber_lan` is enabled, client
+authentication remains scoped to one app activation. Clients must pair again after
+a restart, even with relay hosting enabled. This option does not change LAN cookie,
+password-rotation or paired-token expiration behavior.
+
+The option defaults to `false`, disabling passive hosting; explicitly creating a
+relay pairing can still start hosting through OpenChamber's existing behavior.
+There is one managed OpenChamber server. The LAN service proxies to it rather than
+running a second relay host; the upstream `relay-host.lock` protects its identity
+from competing local hosts. Environment scrubbing and the non-dumpable preload
+remain in place, but do not restrict outbound network destinations.
+
 ## PPQ Private TEE Models (Beta)
 
 Enable **PPQ private TEE models** and set the PPQ key privately in the app options.
