@@ -2,12 +2,15 @@
 
 ## [Unreleased]
 
+## 3.2.1b0
+
+- Beta qualification release; stable remains 3.2.0. Beta and stable retain separate histories and settings: installing beta does not import or repair stable data.
 - Recover older V2 generations missing their converter home through validated copy-on-write repair; missing persistent state remains an explicit error (#163).
 - Restore migrated history on the first startup after a V2 runtime upgrade, with separate upgrade and placement-preservation checks (#134, #161).
-- Fix V1-to-V2 migration failures with `event_sequence_mismatch` by validating the synthetic tool-compatibility notice added by OpenCode 2.0.22, and relocate migrated `/homeassistant` sessions into the isolated project used by the V2 UI so existing history remains visible. Previously activated generations receive the same placement fix through a validated copy-on-write repair. Watermark failures now report only a hashed session identifier and structural counts, never conversation content ([#158](https://github.com/magnusoverli/opencode/issues/158), [#160](https://github.com/magnusoverli/opencode/issues/160)).
+- Fix V1-to-V2 `event_sequence_mismatch` validation for OpenCode 2.0.22's synthetic tool notice, with private structural diagnostics; thanks @loopy321 for #161 (#158, #160, #168, #169, #170).
 - Add opt-in OpenChamber relay reconnection across restarts when LAN web UI is disabled; LAN-enabled clients retain activation-scoped authentication and must pair again (#151). Thanks @edouardkleinhans.
 
-- Refresh beta Node 24 LTS, yq, Prettier, tsx and compatible dependency floors while retaining OpenCode 2.0.22/OpenChamber 2.1.0; thanks @edouardkleinhans for the remaining upgrade work in #144.
+- Refresh Node to 24.21.0, yq to v4.54.1, Prettier to 3.9.9, tsx to 4.23.15 and compatible dependency floors; retain OpenCode 2.0.22/OpenChamber 2.1.0 and the standalone PPQ peer policy. Thanks @edouardkleinhans (#144).
 - Restore the shared OpenCode update checker for V2-only channels and fail on inconsistent build pins; thanks @edouardkleinhans (#144).
 
 ## 3.2.0b8
