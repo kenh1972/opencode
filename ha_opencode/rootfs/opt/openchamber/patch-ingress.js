@@ -44,6 +44,14 @@ const distDir = path.join(packageRoot, "dist");
 const assetsDir = path.join(distDir, "assets");
 const indexPath = path.join(distDir, "index.html");
 
+// 2.2.0 fixes sub-path joining upstream. Guard that implementation instead of
+// rewriting the obsolete origin-only builder in minified output.
+const runtimeUrlSource = fs.readFileSync(path.join(packageRoot, "../ui/src/lib/runtime-url.ts"), "utf8");
+if (!runtimeUrlSource.includes("const base = new URL(baseUrl);") ||
+    !runtimeUrlSource.includes("const url = new URL(`${base.origin}${base.pathname.replace(/\\/+$/, '')}${normalizedPath}`);")) {
+  fail("upstream sub-path-preserving API URL builder changed");
+}
+
 if (!fs.existsSync(indexPath)) {
   fail(`index.html not found at ${indexPath}`);
 }
@@ -92,19 +100,12 @@ const runtimeUrlPattern =
 const runtimeUrlReplacement = (_m, arg, base) =>
   'try{return new URL(' + arg + '.replace(/^\\/+/,""),`${' + base + '.replace(/\\/+$/,"")}/`).toString()}catch{return ' + arg + '}}';
 
-// const RES=BUILD(ARG);if(!BASE)return RESOLVE(RES,EXTRA);const URLVAR=new URL(RES,`${BASE}/`);
-const apiBuilderPattern =
-  /const (\w+)=(\w+)\((\w+)\);if\(!(\w+)\)return (\w+)\(\1,(\w+)\);const (\w+)=new URL\(\1,`\$\{\4\}\/`\);/;
-const apiBuilderReplacement = (_m, res, build, arg, base, resolve, extra, urlVar) =>
-  'const ' + res + '=' + base + '?' + arg + '.trim().replace(/^\\/+/,""):' + build + '(' + arg + ');if(!' + base + ')return ' + resolve + '(' + res + ',' + extra + ');const ' + urlVar + '=new URL(' + res + ',`${' + base + '}/`);';
-
 const apiClassifierPattern =
   /(\w+)=>\1\.startsWith\("\/api\/"\)\|\|\1==="\/api"\|\|\1\.startsWith\("\/auth\/"\)\|\|\1==="\/auth"\|\|\1==="\/health"/;
 const apiClassifierReplacement = (_m, p) =>
   p + '=>!' + p + '.startsWith("/api/hassio_ingress/")&&(' + p + '.startsWith("/api/")||' + p + '==="/api"||' + p + '.startsWith("/auth/")||' + p + '==="/auth"||' + p + '==="/health")';
 
 let patchedRuntimeUrl = false;
-let patchedApiBuilder = false;
 let patchedApiClassifier = false;
 let patchedServiceWorker = false;
 let patchedViteAssetsUrl = false;
@@ -117,16 +118,6 @@ for (const filePath of jsFiles) {
   if (runtimeUrlPattern.test(content)) {
     content = replaceRegexOnce(content, runtimeUrlPattern, runtimeUrlReplacement, "runtime URL builder");
     patchedRuntimeUrl = true;
-  }
-
-  if (apiBuilderPattern.test(content)) {
-    content = replaceRegexOnce(
-      content,
-      apiBuilderPattern,
-      apiBuilderReplacement,
-      "API URL builder"
-    );
-    patchedApiBuilder = true;
   }
 
   // The app classifies "/api/*", "/auth/*" and "/health" paths as its own API
@@ -224,9 +215,6 @@ if (cssRootAssetReferences.length > 0) {
 
 if (!patchedRuntimeUrl) {
   fail("runtime URL builder pattern not found");
-}
-if (!patchedApiBuilder) {
-  fail("API URL builder pattern not found");
 }
 if (!patchedApiClassifier) {
   fail("API path classifier pattern not found");

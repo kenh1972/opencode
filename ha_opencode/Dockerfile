@@ -1,17 +1,17 @@
 # Global ARGs (available in FROM instructions)
 ARG BUILD_FROM=ghcr.io/home-assistant/base-debian:trixie
-ARG NODE_VERSION=24.15.0
+ARG NODE_VERSION=24.21.0
 
 # Home Assistant does not publish a Node-specific Debian base. Keep its s6 and
 # Bashio runtime as the final base, and copy an exact official Node toolchain in.
 FROM node:${NODE_VERSION}-trixie-slim AS node-runtime
 
 # OpenChamber's web release is independently pinned; its desktop CLI is never
-# installed. Build against the upstream lock, on the target's native CI runner.
+# installed. Build with the reviewed security lock, on the target's native runner.
 FROM oven/bun:1.4.2-slim@sha256:cb3bbbb08e13a4a2ff400f24c7a2a1d5efa83f6ef8544d52d95a519631e2fc61 AS openchamber-bun
 FROM node-runtime AS openchamber-builder
-ARG OPENCHAMBER_REVISION=90726f9949da3408b2baf0f997e24bd71455946e
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git python3 g++ make \
+ARG OPENCHAMBER_REVISION=74b79d41eac44ff38790c66f238050936083e0bb
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git openssh-client python3 g++ make \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=openchamber-bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /opt/openchamber-preview
@@ -21,6 +21,10 @@ RUN git init \
     && git checkout --detach FETCH_HEAD \
     && test "$(git rev-parse HEAD)" = "${OPENCHAMBER_REVISION}" \
     && test "$(bun --version)" = 1.4.2
+COPY rootfs/opt/openchamber/patch-security-dependencies.cjs rootfs/opt/openchamber/security-overrides.json /tmp/
+RUN node /tmp/patch-security-dependencies.cjs /opt/openchamber-preview
+COPY rootfs/opt/openchamber/security.bun.lock /opt/openchamber-preview/bun.lock
+COPY rootfs/opt/openchamber/patch-git-environment.cjs /tmp/patch-git-environment.cjs
 # Patch translated guidance in source so the built frontend uses app-owned updates.
 COPY rootfs/opt/openchamber/patch-app-updates.cjs /tmp/patch-app-updates.cjs
 RUN node /tmp/patch-app-updates.cjs /opt/openchamber-preview
@@ -31,26 +35,39 @@ COPY rootfs/opt/openchamber/patch-usage-model.cjs /tmp/patch-usage-model.cjs
 RUN node /tmp/patch-usage-model.cjs /opt/openchamber-preview
 # Skip desktop/mobile lifecycle scripts; explicitly build only the SDK/web assets.
 RUN bun install --frozen-lockfile --ignore-scripts \
+    && node /tmp/patch-git-environment.cjs /opt/openchamber-preview/packages/web \
     && bun run --cwd packages/sdk build \
     && bun run --cwd packages/web build
 RUN --mount=type=bind,source=test/openchamber-model-fixture.cjs,target=/tmp/openchamber-model-fixture.cjs,readonly \
     --mount=type=bind,source=test/openchamber-model-regressions.inc.ts,target=/tmp/openchamber-model-regressions.inc.ts,readonly \
     --mount=type=bind,source=test/openchamber-usage.mjs,target=/tmp/openchamber-usage.mjs,readonly \
     node /tmp/openchamber-model-fixture.cjs /opt/openchamber-preview \
-    && (cd packages/ui && bun test src/stores/useConfigStore.test.ts) \
+    && (cd packages/ui && bun test src/stores/useConfigStore.test.ts && bun test src/lib/runtime-url.test.ts) \
     && node --test /tmp/openchamber-usage.mjs
+RUN timeout --signal=TERM --kill-after=10s 180s bun run --cwd packages/web test server/lib/git
 COPY rootfs/opt/openchamber/patch-ingress.js /tmp/patch-ingress.cjs
 RUN node /tmp/patch-ingress.cjs /opt/openchamber-preview/packages/web
 COPY rootfs/opt/openchamber/patch-managed-backend.cjs /tmp/patch-managed-backend.cjs
 RUN node /tmp/patch-managed-backend.cjs /opt/openchamber-preview/packages/web
+COPY rootfs/opt/openchamber/patch-proxy-framing.cjs /tmp/patch-proxy-framing.cjs
+RUN node /tmp/patch-proxy-framing.cjs /opt/openchamber-preview/packages/web
 RUN rm -rf node_modules packages/*/node_modules \
     && bun install --frozen-lockfile --production --ignore-scripts \
         --filter @openchamber/web --filter @openchamber/sdk
+RUN node /tmp/patch-git-environment.cjs /opt/openchamber-preview/packages/web
+COPY rootfs/opt/openchamber/patch-proxy-deprecation.cjs /tmp/patch-proxy-deprecation.cjs
+RUN node /tmp/patch-proxy-deprecation.cjs /opt/openchamber-preview/packages/web
+COPY rootfs/opt/openchamber/patch-braces-depth.cjs /tmp/patch-braces-depth.cjs
+RUN node /tmp/patch-braces-depth.cjs /opt/openchamber-preview/packages/web
+COPY rootfs/opt/openchamber/audit-installed.mjs /tmp/audit-openchamber.mjs
+RUN node /tmp/audit-openchamber.mjs
 RUN node -e 'require("./packages/web/node_modules/node-pty").spawn("/bin/true", []).onExit(e => process.exit(e.exitCode))' \
     && node --input-type=module -e 'await import("./packages/web/server/index.js"); process.exit(0)'
 RUN --mount=type=bind,source=test/openchamber-request-body.mjs,target=/tmp/openchamber-request-body.mjs,readonly \
+    --mount=type=bind,source=test/openchamber-security.mjs,target=/tmp/openchamber-security.mjs,readonly \
     --mount=type=bind,source=test/openchamber-lan-auth.mjs,target=/tmp/openchamber-lan-auth.mjs,readonly \
-    node --test /tmp/openchamber-request-body.mjs /tmp/openchamber-lan-auth.mjs
+    --mount=type=bind,source=test/openchamber-relay-host.mjs,target=/tmp/openchamber-relay-host.mjs,readonly \
+    node --throw-deprecation --test /tmp/openchamber-security.mjs /tmp/openchamber-request-body.mjs /tmp/openchamber-lan-auth.mjs /tmp/openchamber-relay-host.mjs
 
 ## Build hab CLI from source (pinned release)
 # Pinned to the build host's platform — Go cross-compiles via GOARCH below,
@@ -82,11 +99,11 @@ ARG NODE_VERSION
 ARG ADDON_CHANNEL=stable
 ARG TTYD_VERSION=1.7.7
 # One pinned V2 runtime and its matching plugin API. No V1 runtime is installed.
-ARG OPENCODE_V2_VERSION=2.0.22
-ARG OPENCHAMBER_VERSION=2.1.0
+ARG OPENCODE_V2_VERSION=2.0.26
+ARG OPENCHAMBER_VERSION=2.2.0
 ARG PPQ_PROXY_VERSION=0.1.0
-ARG TSX_VERSION=4.20.6
-ARG YQ_VERSION=v4.53.3
+ARG TSX_VERSION=4.23.15
+ARG YQ_VERSION=v4.54.1
 ARG ZIGPORTER_VERSION=1.4.2
 
 # Environment for better Node.js performance

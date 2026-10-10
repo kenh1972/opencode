@@ -18,7 +18,8 @@ async function listen(server) {
   return server.address().port;
 }
 
-test("preview forwards parsed chunked and fixed-length JSON with unambiguous framing", { timeout: 10000 }, async (t) => {
+for (const parsed of [false, true]) {
+test(`preview forwards ${parsed ? 'parsed' : 'streaming'} chunked and fixed-length JSON with unambiguous framing`, { timeout: 10000 }, async (t) => {
   const upstream = createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -31,7 +32,7 @@ test("preview forwards parsed chunked and fixed-length JSON with unambiguous fra
   });
   const port = await listen(upstream);
   const app = express();
-  app.use(express.json());
+  if (parsed) app.use(express.json());
   registerOpenCodeProxy(app, {
     fs, os, path, OPEN_CODE_READY_GRACE_MS: 1000, LONG_REQUEST_TIMEOUT_MS: 2000,
     getRuntime: () => ({ openCodePort: port, isOpenCodeReady: true, openCodeNotReadySince: 0 }),
@@ -47,12 +48,17 @@ test("preview forwards parsed chunked and fixed-length JSON with unambiguous fra
       server.close(resolve);
     })));
   });
-  for (const payload of [{ agent: "build", title: "Home Assistant — test ✓" }, {}]) {
+  for (const [route, payload] of [
+    ["/api/session", { agent: "build", title: "Home Assistant — test ✓" }],
+    ["/api/session/ses_fixture/prompt", { text: "Continue — ✓", resume: false }],
+    ["/api/session/ses_fixture/command", { command: "fixture", arguments: "" }],
+    ["/api/session/ses_fixture/interrupt", {}],
+  ]) {
     const body = Buffer.from(JSON.stringify(payload));
     for (const chunked of [false, true]) {
       const response = await new Promise((resolve, reject) => {
         const req = request({
-          host: "127.0.0.1", port: proxyPort, path: "/api/session", method: "POST",
+          host: "127.0.0.1", port: proxyPort, path: route, method: "POST",
           headers: { "Content-Type": "application/json", ...(chunked ? { "Transfer-Encoding": "chunked" } : { "Content-Length": body.length }) },
         }, async (res) => {
           try {
@@ -67,11 +73,17 @@ test("preview forwards parsed chunked and fixed-length JSON with unambiguous fra
       });
       assert.equal(response.status, 200, `${chunked ? "Chunked" : "Fixed-length"} JSON must reach the backend`);
       const actual = JSON.parse(response.text);
-      assert.equal(actual.path, "/api/session");
-      assert.equal(actual.transfer, undefined);
-      assert.equal(Number(actual.length), body.length);
+      assert.equal(actual.path, route);
+      if (parsed || !chunked) {
+        assert.equal(actual.transfer, undefined);
+        assert.equal(Number(actual.length), body.length);
+      } else {
+        assert.equal(actual.transfer, 'chunked');
+        assert.equal(actual.length, undefined);
+      }
       assert.deepEqual(JSON.parse(actual.body), payload);
       assert.equal(actual.authenticated, true);
     }
   }
 });
+}

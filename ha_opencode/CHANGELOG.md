@@ -3,7 +3,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-- Promote beta 3.2.0b8 to stable with hab 1.7.2 native compact discovery, verified dashboard patches and opt-in experimental Assist integration.
+- Promote the qualified 3.2.1b2 fixes while retaining stable storage, Assist ownership and hab 1.7.2 dashboard functionality.
+
+## 3.2.1
+
+- Pass stable amd64/arm64 boundary checks and an actual Supervisor upgrade from 3.2.0, preserving an existing session and verifying Ingress continuation on the installed candidate.
+- Upgrade to OpenCode CLI/plugin **2.0.26**, OpenChamber **2.2.0** and Puppeteer **25.13.0**; retain existing stable sessions, sign-ins and settings through validated copy-on-write migration.
+- Fix OpenChamber Ingress prompt submission returning **`400: Expected object`**; verify continuation in the same session before and after page reload (#178).
+- Fix V1 migration sequence validation, missing converter-home recovery and first-upgrade history placement; thanks @loopy321 for #161 and the reporters in #160/#163. General cross-location picker behavior remains separate.
+- Remediate shipped dependency advisories with a reproducible OpenChamber lock and tested Git compatibility. Four installed npm trees report zero findings; the OpenChamber `braces` advisory remains explicitly vendor-mitigated, not a zero-finding audit. OS packages and browser-embedded code are outside that audit scope.
+- Restore the runtime update checker and refresh compatible dependencies; thanks @edouardkleinhans (#144). Preserve stable's hab **1.7.2**, native compact discovery and verified dashboard patch behavior.
+- Add default-off passive OpenChamber relay hosting, preserving signing/encryption keys across restarts; thanks @edouardkleinhans (#151). **Real phone/public-relay pairing and cross-network reconnection remain unverified.** LAN-enabled authentication still expires on restart.
+- Fix `/data` test portability, explicitly skip compiler fixtures in production, qualify screenshots on current Home Assistant app routes, and remove the proxy `DEP0060` warning.
+- Beta and stable retain separate data. Update the existing stable add-on to preserve its history; installing the other channel does not transfer conversations.
 
 ## 3.2.0
 

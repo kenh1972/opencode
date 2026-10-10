@@ -24,7 +24,7 @@
 
 ## 🚀 Getting Started
 
-🥳 **OpenCode 3.2 is here!** Includes OpenCode 2.0.22, OpenChamber 2.1.0,
+🥳 **OpenCode 3.2.1 is here!** Includes OpenCode 2.0.26, OpenChamber 2.2.0,
 more efficient hab commands and opt-in experimental Assist conversations/AI tasks.
 See [what changed and how to enable Assist](ha_opencode/DOCS.md#upgrading-to-32).
 Upgrading from 2.x? Read the

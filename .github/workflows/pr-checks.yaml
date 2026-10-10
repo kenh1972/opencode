@@ -79,8 +79,14 @@ jobs:
         working-directory: ha_opencode/rootfs/opt/ha-mcp-server
         run: npm install --ignore-scripts --no-audit --no-fund
 
+      - name: Audit stable production runtime and screenshot dependencies
+        run: |
+          npm audit --omit=dev --audit-level=low --prefix ha_opencode/rootfs/opt/opencode-v2-homeassistant
+          npm audit --omit=dev --audit-level=low --prefix ha_opencode/rootfs/opt/ha-mcp-server
+
       - name: Stable add-on contract tests
         env:
+          HA_NATIVE_TESTS_REQUIRED: "1"
           HA_ASSIST_BROWSER_EXECUTABLE: /usr/bin/google-chrome
         run: node --test "ha_opencode/test/*.test.js"
 
@@ -88,7 +94,7 @@ jobs:
         run: sudo "$(command -v node)" --test ha_opencode/test/opencode-v2-external-mcp.test.js
 
       - name: Stable native provider credential loader boundary
-        run: sudo "$(command -v node)" --test ha_opencode/test/opencode-v2-provider-environment.test.js
+        run: sudo env HA_NATIVE_TESTS_REQUIRED=1 "$(command -v node)" --test ha_opencode/test/opencode-v2-provider-environment.test.js
 
       - name: HA-facing MCP discovery and service lifecycle contracts
         run: node --test scripts/ha-facing-discovery.test.mjs

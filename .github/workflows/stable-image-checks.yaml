@@ -9,6 +9,7 @@ on:
       - "ha_opencode/Dockerfile"
       - "ha_opencode/build.yaml"
       - "ha_opencode/rootfs/**"
+      - "ha_opencode/test/**"
   push:
     branches:
       - main
@@ -18,6 +19,7 @@ on:
       - "ha_opencode/Dockerfile"
       - "ha_opencode/build.yaml"
       - "ha_opencode/rootfs/**"
+      - "ha_opencode/test/**"
   workflow_dispatch:
 
 concurrency:
@@ -49,6 +51,7 @@ jobs:
           context: ha_opencode
           file: ha_opencode/Dockerfile
           platforms: ${{ matrix.platform }}
+          target: boundary-test
           push: false
           build-args: |
             BUILD_FROM=ghcr.io/home-assistant/base-debian:trixie

@@ -11,7 +11,10 @@ import time
 
 if os.environ.get("HA_MANAGED_CLI_ACCEPTANCE") != "1":
     raise SystemExit("Set HA_MANAGED_CLI_ACCEPTANCE=1 in the official devcontainer")
-APP = "app_local_ha_opencode_beta"
+CHANNEL = os.environ.get("HA_ACCEPTANCE_CHANNEL", "beta")
+if CHANNEL not in ("stable", "beta"):
+    raise SystemExit("HA_ACCEPTANCE_CHANNEL must be stable or beta")
+APP = "app_local_ha_opencode" + ("_beta" if CHANNEL == "beta" else "")
 SERVICE = "/run/service/ha-opencode-v2-server"
 
 

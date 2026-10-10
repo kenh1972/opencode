@@ -8,13 +8,14 @@
     "verify:versions": "node scripts/verify-versions.js"
   },
   "dependencies": {
-    "@opencode/cli": "2.0.22",
-    "@opencode/plugin": "2.0.22",
-    "prettier": "3.9.8",
+    "@opencode/cli": "2.0.26",
+    "@opencode/plugin": "2.0.26",
+    "prettier": "3.9.9",
     "vscode-jsonrpc": "8.2.1"
   },
   "devDependencies": {
     "@opencode-ai/cli": "0.0.0-beta-18684",
-    "opencode-previous": "npm:@opencode/cli@2.0.13"
+    "opencode-previous": "npm:@opencode/cli@2.0.13",
+    "opencode-beta-previous": "npm:@opencode/cli@2.0.22"
   }
 }

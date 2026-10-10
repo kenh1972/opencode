@@ -6,6 +6,7 @@ restores the original interface. No HA device calls are made. Set the additional
 HA_OPENCHAMBER_MODEL_ACCEPTANCE=1 to send one real free-model prompt through the UI.
 HA_EDITOR_LSP_ACCEPTANCE=unavailable temporarily stops only the supervised LSP
 worker for the rendered unavailable check, then restores it before smoke checks.
+HA_ACCEPTANCE_CHANNEL=stable selects the isolated stable app (default: beta).
 """
 import json
 import os
@@ -15,8 +16,11 @@ import time
 
 if os.environ.get("HA_OPENCHAMBER_ACCEPTANCE") != "1":
     raise SystemExit("Set HA_OPENCHAMBER_ACCEPTANCE=1 in the official devcontainer")
-APP = "app_local_ha_opencode_beta"
-SLUG = "local_ha_opencode_beta"
+CHANNEL = os.environ.get("HA_ACCEPTANCE_CHANNEL", "beta")
+if CHANNEL not in ("stable", "beta"):
+    raise SystemExit("HA_ACCEPTANCE_CHANNEL must be stable or beta")
+SLUG = "local_ha_opencode" + ("_beta" if CHANNEL == "beta" else "")
+APP = "app_" + SLUG
 EDITOR_MODE = os.environ.get("HA_EDITOR_LSP_ACCEPTANCE") or None
 if EDITOR_MODE not in (None, "live", "unavailable"):
     raise SystemExit("HA_EDITOR_LSP_ACCEPTANCE must be live or unavailable")
@@ -36,7 +40,7 @@ def select_interface(mode):
     # Keep Supervisor credentials and saved options within Core's process.
     command("docker", "exec", "homeassistant", "python3", "-c", r'''
 import json, os, sys, urllib.request
-base = "http://supervisor/addons/local_ha_opencode_beta"
+base = "http://supervisor/addons/" + sys.argv[2]
 headers = {"Authorization": "Bearer " + os.environ["SUPERVISOR_TOKEN"], "Content-Type": "application/json"}
 def request(path, data=None):
     req = urllib.request.Request(base + path, headers=headers, data=None if data is None else json.dumps(data).encode())
@@ -47,7 +51,7 @@ def request(path, data=None):
 options = request("/info")["options"]
 options["interface_mode"] = sys.argv[1]
 request("/options", {"options": options})
-''', mode)
+''', mode, SLUG)
     command("ha", "apps", "restart", SLUG, timeout=120)
     for _ in range(80):
         result = subprocess.run(["docker", "exec", APP, "opencode", "status"], capture_output=True, timeout=5)

@@ -68,7 +68,7 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
     await mkdir(pluginDir);
     await writeFile(join(pluginDir, "package.json"), JSON.stringify({ name: "native-fixture", type: "module", exports: "./index.js" }));
     await writeFile(join(pluginDir, "index.js"), `
-      import { Plugin } from ${JSON.stringify(pathToFileURL(join(runtime, "node_modules/@opencode/plugin/dist/promise/index.js")).href)};
+      import { Plugin } from "@opencode/plugin";
       import { createSetup } from ${JSON.stringify(pathToFileURL(join(runtime, "plugin.js")).href)};
       export default Plugin.define({ id: "native-fixture", setup: createSetup({ readSecret: async () => "a".repeat(64) }) });
     `);
@@ -101,7 +101,7 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
       try { await client.server.info({ signal: AbortSignal.timeout(500) }); ready = true; break; } catch { await sleep(50); }
     }
     assert.ok(ready, "isolated pinned server readiness");
-    assert.equal((await client.server.info()).version, "2.0.22");
+    assert.equal((await client.server.info()).version, "2.0.26");
     let session = await client.session.create({ title: "warmup fixture" });
     await client.session.prompt({ sessionID: session.id, text: "Reply briefly without using tools." });
     await client.session.wait({ sessionID: session.id }, { signal: AbortSignal.timeout(10000) });
@@ -112,7 +112,9 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
       if (commands.data.some(({ name }) => name === "homeassistant_native:Assist")) { catalogReady = true; break; }
       await sleep(50);
     }
-    assert.ok(catalogReady, "native prompt catalog must load");
+    assert.ok(catalogReady, "native prompt catalog must load; commands=" +
+      JSON.stringify((await client.command.list()).data.map(({ name }) => name)) +
+      "; methods=" + JSON.stringify(requests.map(({ message }) => message.method)));
     const catalog = await client.mcp.resource.catalog();
     assert.ok(catalog.data.resources.some(({ server, uri }) => server === "homeassistant_native" && uri === contextUri));
     assert.equal(requests.filter(({ message }) => ["prompts/get", "resources/read", "tools/call"].includes(message.method)).length, 0,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only audit of the installed beta in the isolated HA devcontainer.
+"""Read-only audit of the installed stable/beta in the isolated HA devcontainer.
 
 Run after installing/updating through Supervisor, with --version and the expected
 Docker image ID. Report exact installed versions; never print app options/tokens.
@@ -15,8 +15,10 @@ if os.environ.get("HA_PRODUCTION_AUDIT") != "1":
 parser = argparse.ArgumentParser()
 parser.add_argument("--version", required=True)
 parser.add_argument("--image", required=True)
+parser.add_argument("--channel", choices=("stable", "beta"), default="beta")
 args = parser.parse_args()
-app = "app_local_ha_opencode_beta"
+slug = "local_ha_opencode" + ("_beta" if args.channel == "beta" else "")
+app = "app_" + slug
 
 
 def command(*argv):
@@ -25,12 +27,12 @@ def command(*argv):
     return result.stdout.strip()
 
 
-info = json.loads(command("ha", "--raw-json", "apps", "info", "local_ha_opencode_beta"))["data"]
-assert info["version"] == args.version and info["state"] == "started", "Install and start the expected beta first"
+info = json.loads(command("ha", "--raw-json", "apps", "info", slug))["data"]
+assert info["version"] == args.version and info["state"] == "started", "Install and start the expected app first"
 image = command("docker", "inspect", "--format", "{{.Image}}", app)
 assert image == args.image, "Installed image differs from the qualification artifact"
 assert command("docker", "inspect", "--format", "{{.State.Health.Status}}", app) == "healthy"
-print(f"Installed beta {args.version}: {image}", flush=True)
+print(f"Installed {args.channel} {args.version}: {image}", flush=True)
 for label, path in {
     "OpenCode CLI": "/opt/opencode-v2-homeassistant/node_modules/@opencode/cli/package.json",
     "OpenCode plugin": "/opt/opencode-v2-homeassistant/node_modules/@opencode/plugin/package.json",
