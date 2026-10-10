@@ -128,6 +128,8 @@ at `/usr/share/doc/ha-opencode/NOTICE` and in this repository's
 
 ## Current Beta Changes
 
+- **3.2.1b0 recovery qualification**: Validate the OpenCode 2.0.22 legacy-tool notice, repair migrated `/homeassistant` placement before first-startup activation, and recover an older generation's missing converter home. Recovery uses validated private copies; existing V1 data is retained. Beta and stable have separate storage, so installing beta does not import or repair stable history. Keep a Home Assistant app/data backup before testing an upgrade.
+- **Opt-in relay reconnection**: `openchamber_relay_host` restores passive reconnection with LAN web UI disabled. LAN-enabled clients still expire at restart; see [OpenChamber Relay Hosting](#openchamber-relay-hosting).
 - **Stable 3.1.0 baseline**: Includes stable's complete large-HAB-output exports, runtime-aware template validation, 32 GiB history-migration preflight and startup progress messages.
 - **Native LLM API discovery**: `get_agent_capabilities` and `ha://agent/capabilities` query `llm/api/list` on each check, show registered IDs/names, and diagnose the configured selection without changing it. The development guide targets HA `2026.10.0b0`.
 - **OpenChamber session creation fix**: Beta `3.0.0b19` fixes HTTP 400 errors when creating sessions or sending JSON requests through Home Assistant Ingress. A first message and free-model reply have been verified through the actual browser UI and Core Ingress.
@@ -163,7 +165,9 @@ at `/usr/share/doc/ha-opencode/NOTICE` and in this repository's
 | --- | --- |
 | Custom configuration could not be prepared; sidecar inactive | Read the first `opencode_config` or `external_mcp_config` error. Correct that option and restart; the sidecar waits for successful configuration staging. Reinstalling is not required. |
 | `opencode-container-init` rejects `/homeassistant` | The failure is before migration. The log now identifies a missing mount, a symlink/file, or the observed versus required numeric UID/GID. Include that metadata and your installation type in the report; do not recursively change configuration ownership. |
-| Migrated sessions appear missing | In the TUI session picker, Ctrl+A switches to all projects; Ctrl+O can search across locations. The pinned picker lists at most 50 root sessions and does not paginate or list child sessions. This is a browsing limitation, not evidence of lost history. |
+| `event_sequence_mismatch` on V1 conversion | Beta 3.2.1b0 accounts for the compatibility notice added by OpenCode 2.0.22. Let startup finish; if validation still fails, report the error and structural counts without sharing databases or credentials. Do not reset the database. |
+| An older activated generation lacks `home` | Beta 3.2.1b0 reconstructs this converter directory in a validated private copy. Missing required state/database instead produces `missing_generation_state` or `missing_generation_database`; retain the data and report the error rather than creating an empty database. |
+| Migrated sessions appear missing | Beta 3.2.1b0 places exact `/homeassistant` sessions in the managed UI project, including existing V2 upgrades. Other locations remain separate. Ctrl+A switches to all projects in the picker; Ctrl+O can search across locations. The pinned picker still lists at most 50 root sessions and does not paginate or list child sessions. |
 
 Custom agents in project `.opencode/agents` directories are not loaded by this
 managed runtime. A persistent importer with constrained permissions remains a
@@ -753,6 +757,27 @@ Every app restart, including a password change, invalidates them and closes
 existing streams; sign in or pair again. Conversation history, UI settings and
 provider credentials remain persistent. The editor LSP bridge and HA inbound-MCP
 Ingress routes are not exposed on the LAN frontends.
+
+## OpenChamber Relay Hosting
+
+Set `interface_mode: openchamber` and enable `openchamber_relay_host` to let the
+managed instance automatically reconnect to its configured relay when an active
+relay-paired client or pending pairing needs it. The default endpoint is the
+third-party service `wss://relay.openchamber.dev/ws`. With LAN web UI disabled,
+relay identity and pairing records persist in `/data/.config/openchamber`, so
+paired devices can reconnect after app restarts and updates without pairing again.
+
+**LAN web UI limitation:** when `enable_openchamber_lan` is enabled, client
+authentication remains scoped to one app activation. Clients must pair again after
+a restart, even with relay hosting enabled. This option does not change LAN cookie,
+password-rotation or paired-token expiration behavior.
+
+The option defaults to `false`, disabling passive hosting; explicitly creating a
+relay pairing can still start hosting through OpenChamber's existing behavior.
+There is one managed OpenChamber server. The LAN service proxies to it rather than
+running a second relay host; the upstream `relay-host.lock` protects its identity
+from competing local hosts. Environment scrubbing and the non-dumpable preload
+remain in place, but do not restrict outbound network destinations.
 
 ## PPQ Private TEE Models (Beta)
 
