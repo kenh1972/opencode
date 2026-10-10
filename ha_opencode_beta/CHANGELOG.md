@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Add an opt-in OpenChamber relay hosting option (#151).
+- Add opt-in OpenChamber relay reconnection across restarts when LAN web UI is disabled; LAN-enabled clients retain activation-scoped authentication and must pair again (#151). Thanks @edouardkleinhans.
 
 ## 3.2.0b8
 

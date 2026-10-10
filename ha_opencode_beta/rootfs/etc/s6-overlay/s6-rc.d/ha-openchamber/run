@@ -5,9 +5,8 @@ if [ "$(cat /data/.interface_mode)" != openchamber ]; then
 fi
 mkdir -p /data/.config/openchamber
 bashio::log.info "Starting pinned OpenChamber V2 on the existing managed backend"
-# Relay hosting for the managed OpenChamber instance: default off to avoid two
-# OpenChamber processes competing for the same relay identity (relay-host.lock
-# arbitrates that otherwise). Enabled via the openchamber_relay_host option.
+# Opt in to passive reconnection. Explicit pairing can still enable hosting;
+# the LAN proxy uses this same managed instance and authentication lifecycle.
 if [ "$(bashio::config 'openchamber_relay_host' 'false')" = "true" ]; then
     OPENCHAMBER_RELAY_HOST="on"
 else
