@@ -37,7 +37,7 @@ RUN --mount=type=bind,source=test/openchamber-model-fixture.cjs,target=/tmp/open
     --mount=type=bind,source=test/openchamber-model-regressions.inc.ts,target=/tmp/openchamber-model-regressions.inc.ts,readonly \
     --mount=type=bind,source=test/openchamber-usage.mjs,target=/tmp/openchamber-usage.mjs,readonly \
     node /tmp/openchamber-model-fixture.cjs /opt/openchamber-preview \
-    && (cd packages/ui && bun test src/stores/useConfigStore.test.ts src/lib/runtime-url.test.ts) \
+    && (cd packages/ui && bun test src/stores/useConfigStore.test.ts && bun test src/lib/runtime-url.test.ts) \
     && node --test /tmp/openchamber-usage.mjs
 COPY rootfs/opt/openchamber/patch-ingress.js /tmp/patch-ingress.cjs
 RUN node /tmp/patch-ingress.cjs /opt/openchamber-preview/packages/web
@@ -46,12 +46,14 @@ RUN node /tmp/patch-managed-backend.cjs /opt/openchamber-preview/packages/web
 RUN rm -rf node_modules packages/*/node_modules \
     && bun install --frozen-lockfile --production --ignore-scripts \
         --filter @openchamber/web --filter @openchamber/sdk
+COPY rootfs/opt/openchamber/patch-proxy-deprecation.cjs /tmp/patch-proxy-deprecation.cjs
+RUN node /tmp/patch-proxy-deprecation.cjs /opt/openchamber-preview/packages/web
 RUN node -e 'require("./packages/web/node_modules/node-pty").spawn("/bin/true", []).onExit(e => process.exit(e.exitCode))' \
     && node --input-type=module -e 'await import("./packages/web/server/index.js"); process.exit(0)'
 RUN --mount=type=bind,source=test/openchamber-request-body.mjs,target=/tmp/openchamber-request-body.mjs,readonly \
     --mount=type=bind,source=test/openchamber-lan-auth.mjs,target=/tmp/openchamber-lan-auth.mjs,readonly \
     --mount=type=bind,source=test/openchamber-relay-host.mjs,target=/tmp/openchamber-relay-host.mjs,readonly \
-    node --test /tmp/openchamber-request-body.mjs /tmp/openchamber-lan-auth.mjs /tmp/openchamber-relay-host.mjs
+    node --throw-deprecation --test /tmp/openchamber-request-body.mjs /tmp/openchamber-lan-auth.mjs /tmp/openchamber-relay-host.mjs
 
 ## Build hab CLI from source (pinned release)
 # Pinned to the build host's platform — Go cross-compiles via GOARCH below,

@@ -14,6 +14,8 @@ const web = path.join(upstream, "packages/web");
 const require = createRequire(path.join(web, "package.json"));
 const { WebSocketServer } = require("ws");
 const { createRelayService } = await import(pathToFileURL(path.join(web, "server/lib/relay/service.js")));
+const { createRelayKeyStore } = await import(pathToFileURL(path.join(web, "server/lib/relay/key-store.js")));
+const { deriveServerId } = await import(pathToFileURL(path.join(web, "server/lib/relay/signing-key.js")));
 const { createRemoteClientAuthRuntime } = await import(pathToFileURL(path.join(web, "server/lib/client-auth/remote-clients.js")));
 
 for (const lan of [false, true]) {
@@ -30,18 +32,25 @@ for (const lan of [false, true]) {
       await fs.mkdir(data, { recursive: true, mode: 0o700 });
       await fs.mkdir(auth, { recursive: true, mode: 0o700 });
       const settingsFile = path.join(data, "settings.json");
+      const keys = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+      const legacyIdentity = { privateJwk: keys.privateKey.export({ format: "jwk" }), publicJwk: keys.publicKey.export({ format: "jwk" }) };
+      const expectedServerId = deriveServerId({ crypto }, legacyIdentity.publicJwk);
       await fs.writeFile(settingsFile, JSON.stringify({
         fixture: "preserve",
+        relaySigningKey: legacyIdentity,
         privateRelay: { enabled: true, relayUrl: `ws://127.0.0.1:${relay.address().port}/ws` },
       }), { mode: 0o600 });
       const readSettings = async () => JSON.parse(await fs.readFile(settingsFile, "utf8"));
+      const writeSettings = (next) => fs.writeFile(settingsFile, JSON.stringify(next), { mode: 0o600 });
       const activate = (allowPassiveHost) => {
         const clients = createRemoteClientAuthRuntime({ fsPromises: fs, path, crypto, storePath: path.join(auth, "remote-clients.json") });
+        const relayKeyStore = createRelayKeyStore({ fsPromises: fs, path, dataDir: data,
+          readSettingsFromDiskMigrated: readSettings, readSettingsStrict: readSettings, writeSettingsToDisk: writeSettings });
         const service = createRelayService({
-          crypto, allowPassiveHost,
+          crypto, allowPassiveHost, relayKeyStore,
           readSettingsFromDiskMigrated: readSettings,
           readSettingsStrict: readSettings,
-          writeSettingsToDisk: (next) => fs.writeFile(settingsFile, JSON.stringify(next), { mode: 0o600 }),
+          writeSettingsToDisk: writeSettings,
           getLocalPort: () => 1,
           hasRelayDemand: () => clients.hasActiveRelayClients(),
           logger: { warn() {} },
@@ -63,6 +72,9 @@ for (const lan of [false, true]) {
       const [, request] = await connected;
       const serverId = new URL(request.url, "http://localhost").searchParams.get("serverId");
       assert.ok(serverId);
+      assert.equal(serverId, expectedServerId, "2.2.0 must migrate the existing relay identity without changing paired devices' server ID");
+      assert.equal((await readSettings()).relaySigningKey, undefined);
+      assert.equal((await fs.stat(path.join(data, "relay-identity.json"))).mode & 0o777, 0o600);
       assert.equal(new URL(request.url, "http://localhost").searchParams.get("role"), "host-control");
       assert.equal((await first.clients.authenticateBearerToken(paired.token))?.ok, true);
       first.service.stop();

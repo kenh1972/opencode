@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Remove the traced OpenChamber proxy `DEP0060` warning and fail proxy build tests on future deprecations.
+- Qualify authenticated screenshots against current Home Assistant app routes; obsolete `/hassio/...` frontend paths correctly return 404.
+- Verify OpenChamber 2.2.0 preserves existing relay identities through its key-store migration and app restarts.
 - Retain OpenChamber 2.2.0's upstream sub-path URL fix for Home Assistant Ingress and exercise its URL regression tests during image builds.
 - Qualify OpenCode CLI/plugin 2.0.26, OpenChamber 2.2.0 and Puppeteer 25.13.0 for beta 3.2.1b1, with production audit and installed-image acceptance.
 - Fix startup-error tests with temporary storage under /data and explicitly skip compiler fixtures in production while requiring them in CI.
