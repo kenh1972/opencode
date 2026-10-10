@@ -92,15 +92,17 @@ jobs:
           fi
           if [ -n "${drift}" ]; then
             echo "❌ A channel's two pins disagree:${drift}. Fix before releasing." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::OpenCode build.yaml and Dockerfile pins disagree:${drift}"
+            exit 1
           fi
 
           if [ "${STABLE_BUILD}" != "${V2_LATEST}" ]; then
             {
-              echo "⚠️ Stable V2 is behind the latest official V2 release. Certify it independently; the add-on ships no V1 runtime, so the V1 package is not installed. Re-run the complete V2 compatibility lane before changing the pin."
+              echo "⚠️ Stable V2 differs from the latest official V2 release. Re-run the complete V2 compatibility lane before changing the pin."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ "${BETA_BUILD}" != "${V2_LATEST}" ]; then
-            echo "⚠️ A newer V2 beta exists. Re-run the complete V2 compatibility lane before changing the pin." >> "$GITHUB_STEP_SUMMARY"
+            echo "⚠️ The beta channel's V2 pin differs from the latest official V2 release. Re-run the complete V2 compatibility lane before changing the pin." >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ "${STABLE_BUILD}" = "${V2_LATEST}" ] && [ "${BETA_BUILD}" = "${V2_LATEST}" ]; then
             echo "✅ Both stable and beta V2 pins match the latest official V2 release." >> "$GITHUB_STEP_SUMMARY"
