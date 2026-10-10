@@ -128,6 +128,7 @@ at `/usr/share/doc/ha-opencode/NOTICE` and in this repository's
 
 ## Current Beta Changes
 
+- **3.2.1b1 qualification**: Pins OpenCode CLI/plugin `2.0.26`, OpenChamber `2.2.0` and Puppeteer `25.13.0`. Upgrade tests include existing `2.0.22` generations. Qualification checks the versioned image installed through Supervisor, its actual image ID, production npm audits, `/data` temporary-directory regressions, and Chromium screenshots.
 - **3.2.1b0 recovery qualification**: Validate the OpenCode 2.0.22 legacy-tool notice, repair migrated `/homeassistant` placement before first-startup activation, and recover an older generation's missing converter home. Recovery uses validated private copies; existing V1 data is retained. Beta and stable have separate storage, so installing beta does not import or repair stable history. Keep a Home Assistant app/data backup before testing an upgrade.
 - **Opt-in relay reconnection**: `openchamber_relay_host` restores passive reconnection with LAN web UI disabled. LAN-enabled clients still expire at restart; see [OpenChamber Relay Hosting](#openchamber-relay-hosting).
 - **Stable 3.1.0 baseline**: Includes stable's complete large-HAB-output exports, runtime-aware template validation, 32 GiB history-migration preflight and startup progress messages.
