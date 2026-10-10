@@ -6,6 +6,8 @@
 - Restore migrated history on the first startup after a V2 runtime upgrade, with separate upgrade and placement-preservation checks (#134, #161).
 - Fix V1-to-V2 migration failures with `event_sequence_mismatch` by validating the synthetic tool-compatibility notice added by OpenCode 2.0.22, and relocate migrated `/homeassistant` sessions into the isolated project used by the V2 UI so existing history remains visible. Previously activated generations receive the same placement fix through a validated copy-on-write repair. Watermark failures now report only a hashed session identifier and structural counts, never conversation content ([#158](https://github.com/magnusoverli/opencode/issues/158), [#160](https://github.com/magnusoverli/opencode/issues/160)).
 
+- Restore the shared OpenCode update checker for V2-only channels and fail on inconsistent build pins; thanks @edouardkleinhans (#144).
+
 ## 3.2.0b8
 
 - Upgrade the beta to hab 1.7.1, pinned to its exact release source, with correct version reporting and current Home Assistant API fixes.
