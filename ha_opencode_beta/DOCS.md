@@ -267,6 +267,21 @@ packaged Chromium used by the optional HA `screenshot_url` tool is a separate
 capability. Desktop-browser attachment to the beta app's managed server is not
 yet qualified; do not expose a Chromium debugging port as a workaround.
 
+For Home Assistant 2026.10 app pages, use `/app/<slug>` for the app UI and
+`/config/app/<slug>/info` for its information page. Older `/hassio/ingress/...`
+and `/hassio/addon/...` frontend paths can return 404. Use the path from the
+current Home Assistant UI and its final direct internal origin.
+
+### Beta dependency audit scope
+
+Qualification audits the installed OpenCode, MCP, YAML LSP and PPQ npm trees,
+plus OpenChamber's actual installed packages. The latter uses explicit security
+overrides and a committed lock. The unpatched upstream `braces@3.0.3` advisory
+has a tested vendor depth-limit mitigation and remains visible in reports;
+it is not described as a zero-finding audit. See
+[security patch provenance](rootfs/opt/openchamber/SECURITY-PATCHES.md).
+OS packages and JavaScript embedded in browser bundles are outside these audits.
+
 ### Pasting dashboard screenshots
 
 In **OpenChamber**, paste an image into the chat composer with Ctrl+V (Cmd+V on

@@ -35,9 +35,15 @@ for (const lan of [false, true]) {
       const keys = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
       const legacyIdentity = { privateJwk: keys.privateKey.export({ format: "jwk" }), publicJwk: keys.publicKey.export({ format: "jwk" }) };
       const expectedServerId = deriveServerId({ crypto }, legacyIdentity.publicJwk);
+      const encryption = await crypto.webcrypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+      const legacyEncryption = {
+        privateJwk: await crypto.webcrypto.subtle.exportKey("jwk", encryption.privateKey),
+        publicJwk: await crypto.webcrypto.subtle.exportKey("jwk", encryption.publicKey),
+      };
       await fs.writeFile(settingsFile, JSON.stringify({
         fixture: "preserve",
         relaySigningKey: legacyIdentity,
+        relayEncryptionKey: legacyEncryption,
         privateRelay: { enabled: true, relayUrl: `ws://127.0.0.1:${relay.address().port}/ws` },
       }), { mode: 0o600 });
       const readSettings = async () => JSON.parse(await fs.readFile(settingsFile, "utf8"));
@@ -74,6 +80,9 @@ for (const lan of [false, true]) {
       assert.ok(serverId);
       assert.equal(serverId, expectedServerId, "2.2.0 must migrate the existing relay identity without changing paired devices' server ID");
       assert.equal((await readSettings()).relaySigningKey, undefined);
+      assert.equal((await readSettings()).relayEncryptionKey, undefined);
+      const storedIdentity = JSON.parse(await fs.readFile(path.join(data, "relay-identity.json"), "utf8"));
+      assert.ok(JSON.stringify(storedIdentity.encryptionKey) === JSON.stringify(legacyEncryption), "Migration must preserve the E2EE trust anchor");
       assert.equal((await fs.stat(path.join(data, "relay-identity.json"))).mode & 0o777, 0o600);
       assert.equal(new URL(request.url, "http://localhost").searchParams.get("role"), "host-control");
       assert.equal((await first.clients.authenticateBearerToken(paired.token))?.ok, true);
@@ -103,6 +112,8 @@ for (const lan of [false, true]) {
         assert.equal(await second.clients.authenticateBearerToken(paired.token), null);
       }
       assert.equal((await readSettings()).fixture, "preserve");
+      const restartedIdentity = JSON.parse(await fs.readFile(path.join(data, "relay-identity.json"), "utf8"));
+      assert.ok(JSON.stringify(restartedIdentity) === JSON.stringify(storedIdentity), "Restart must retain both relay keypairs");
     } finally {
       for (const service of services) service.stop();
       for (const socket of relay.clients) socket.terminate();

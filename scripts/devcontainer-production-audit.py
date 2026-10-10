@@ -56,5 +56,13 @@ for tree in ("opencode-v2-homeassistant", "ha-mcp-server", "ha-lsp-server", "ppq
     for name, finding in report.get("vulnerabilities", {}).items():
         print(f"  {name}: {finding['severity']} ({finding['range']})", flush=True)
 
-print("Scope: four installed npm production trees; excludes OS packages and OpenChamber's Bun tree.")
+openchamber = subprocess.run(["docker", "exec", app, "node", "/opt/openchamber/audit-installed.mjs"],
+                            capture_output=True, text=True, timeout=120)
+if openchamber.returncode not in (0, 1):
+    raise SystemExit("Installed OpenChamber audit unavailable")
+report = json.loads(openchamber.stdout)
+assert isinstance(report.get("unmitigated"), int), "Incomplete OpenChamber audit"
+print(json.dumps(report, sort_keys=True), flush=True)
+failed |= openchamber.returncode != 0 or report["unmitigated"] != 0
+print("Scope: four installed npm production trees plus installed OpenChamber packages; excludes OS packages and bundled browser code.")
 raise SystemExit(1 if failed else 0)

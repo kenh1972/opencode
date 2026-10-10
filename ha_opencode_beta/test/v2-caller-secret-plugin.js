@@ -9,7 +9,7 @@ export default {
       // Exercise distinct module generations in the real host. OpenCode 2.0.26
       // intentionally disallows importing its private plugin source loader.
       {
-        const module = await import(`file:///opt/opencode-v2-homeassistant/plugin.js?fixture-generation=${generation}`);
+        const module = await import(new URL(`./generation-${generation}.js`, import.meta.url).href);
         if (module.createSetup === previous) throw new Error("Fixture did not reload the plugin module");
         previous = module.createSetup;
         const setup = module.createSetup();

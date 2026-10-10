@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Expand beta dependency qualification to OpenChamber's shipped packages, with explicit security overrides and a reproducible lock.
+- Preserve trusted server Git settings with simple-git 4 while retaining project-variable and command-injection guards.
+- Bound the unfixed upstream braces recursion advisory with a tested vendor patch, retaining the advisory visibly in audit reports.
 - Remove the traced OpenChamber proxy `DEP0060` warning and fail proxy build tests on future deprecations.
 - Qualify authenticated screenshots against current Home Assistant app routes; obsolete `/hassio/...` frontend paths correctly return 404.
 - Verify OpenChamber 2.2.0 preserves existing relay identities through its key-store migration and app restarts.

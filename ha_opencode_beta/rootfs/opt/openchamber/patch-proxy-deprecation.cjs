@@ -17,5 +17,8 @@ const files = ["index.js", "common.js"].map(name => {
   if (matches.length !== 1) throw new Error(`Unexpected shallow-copy implementation in ${name}`);
   return [file, source.replace("require('util')._extend", "Object.assign")];
 });
-for (const [file, source] of files) fs.writeFileSync(file, source);
+for (const [file, source] of files) {
+  fs.writeFileSync(file + ".ha-patched", source);
+  fs.renameSync(file + ".ha-patched", file);
+}
 console.log("Pinned proxy uses Object.assign without util._extend");
