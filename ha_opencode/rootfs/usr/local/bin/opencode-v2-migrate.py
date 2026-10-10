@@ -2025,6 +2025,9 @@ def repair_generation_workspace(root: Path, current: str, prior: dict, args: arg
     activated = root / "generations" / generation
     try:
         shutil.copytree(source, candidate)
+        # Older generations can lack this empty converter home. Repair only
+        # candidate scaffolding; persistent data/config/state must already exist.
+        ensure_plain_directory(candidate / "home", create=True)
         target = candidate / "data" / "opencode" / "opencode.db"
         baseline = candidate / ".workspace-validation.db"
         snapshot_database(target, baseline)
@@ -2060,6 +2063,26 @@ def repair_generation_workspace(root: Path, current: str, prior: dict, args: arg
         if load_current(root) != generation:
             remove_private_tree(activated)
         raise
+
+
+def generation_needs_home_repair(generation: Path) -> bool:
+    validate_tree(generation)
+    for leaf in ("config", "data", "state"):
+        try:
+            ensure_plain_directory(generation / leaf)
+        except MigrationError as error:
+            if error.code == "missing_directory":
+                raise MigrationError("missing_generation_state", fields=(leaf,)) from error
+            raise
+    database = generation / "data" / "opencode" / "opencode.db"
+    if not database.exists():
+        raise MigrationError("missing_generation_database")
+    ensure_plain_file(database)
+    home = generation / "home"
+    if home.exists() or home.is_symlink():
+        ensure_plain_directory(home)
+        return False
+    return True
 
 
 def prepare_generation_ownership(generation: Path, runtime_user: str | None) -> None:
@@ -2108,9 +2131,10 @@ def prepare(args: argparse.Namespace) -> dict:
         reconcile_private_state(root, current)
         if current:
             result = generation_result(root, current)
+            missing_home = generation_needs_home_repair(generations / current)
             if result.get("target_version") != args.target_version:
                 return upgrade_generation(root, current, result, args)
-            if result.get("workspace_projection") != MANAGED_WORKSPACE:
+            if result.get("workspace_projection") != MANAGED_WORKSPACE or missing_home:
                 return repair_generation_workspace(root, current, result, args)
             prepare_generation_ownership(generations / current, args.runtime_user)
             finalize_generation(root, current, result)

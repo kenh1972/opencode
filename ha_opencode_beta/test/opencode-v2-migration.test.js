@@ -543,6 +543,45 @@ describe("OpenCode V2 copy-on-write migration", () => {
     assert.deepEqual(await readdir(join(root, "generations")), [current]);
   });
 
+  it("repairs only a missing converter home and rejects missing persistent state", async () => {
+    const root = join(sandbox, "missing-home");
+    const args = ["prepare", "--root", root, "--source-data", join(sandbox, "absent-home-source"),
+      "--v2-bin", V2_BIN, "--target-version", TARGET_VERSION, "--timeout", "30"];
+    const initial = runMigrator(python, args);
+    assert.equal(initial.status, 0, initial.stderr);
+    const old = join(root, "generations", JSON.parse(initial.stdout).generation);
+    const before = hash(await readFile(join(old, "data", "opencode", "opencode.db")));
+    await writeFile(join(old, "state", "retained"), "keep state");
+    await rm(join(old, "home"), { recursive: true });
+    // Keep the workspace marker: scaffold repair must not depend on its absence.
+    const repaired = runMigrator(python, args);
+    assert.equal(repaired.status, 0, repaired.stderr);
+    const result = JSON.parse(repaired.stdout);
+    assert.equal(result.status, "repaired");
+    const current = join(root, "generations", result.generation);
+    assert.deepEqual(await readdir(join(current, "home")), []);
+    assert.equal(await readFile(join(current, "state", "retained"), "utf8"), "keep state");
+    assert.equal(hash(await readFile(join(current, "data", "opencode", "opencode.db"))), before);
+    const restarted = runMigrator(python, args);
+    assert.equal(restarted.status, 0, restarted.stderr);
+    assert.deepEqual(JSON.parse(restarted.stdout), { status: "already_activated", generation: result.generation });
+
+    await rm(join(current, "home"), { recursive: true });
+    await writeFile(join(current, "home"), "not a directory");
+    const invalidHome = runMigrator(python, args);
+    assert.equal(invalidHome.status, 1);
+    assert.match(invalidHome.stderr, /unsafe_path_type/);
+    assert.equal(await readFile(join(current, "home"), "utf8"), "not a directory");
+    await rm(join(current, "home"));
+    await rm(join(current, "state"), { recursive: true });
+    const missingState = runMigrator(python, args);
+    assert.equal(missingState.status, 1);
+    assert.match(missingState.stderr, /missing_generation_state.*state/);
+    assert.equal((await readFile(join(root, "current"), "utf8")).trim(), result.generation);
+    assert.equal(hash(await readFile(join(current, "data", "opencode", "opencode.db"))), before);
+    assert.deepEqual(await readdir(join(root, "work")), [".migration.lock"]);
+  });
+
   it("does not replace unidentified existing generations with a fresh empty installation", async () => {
     const root = join(sandbox, "missing-current");
     const existing = join(root, "generations", "1".repeat(32));
