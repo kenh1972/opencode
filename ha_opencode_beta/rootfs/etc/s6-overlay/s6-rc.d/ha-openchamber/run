@@ -5,11 +5,19 @@ if [ "$(cat /data/.interface_mode)" != openchamber ]; then
 fi
 mkdir -p /data/.config/openchamber
 bashio::log.info "Starting pinned OpenChamber V2 on the existing managed backend"
+# Relay hosting for the managed OpenChamber instance: default off to avoid two
+# OpenChamber processes competing for the same relay identity (relay-host.lock
+# arbitrates that otherwise). Enabled via the openchamber_relay_host option.
+if [ "$(bashio::config 'openchamber_relay_host' 'false')" = "true" ]; then
+    OPENCHAMBER_RELAY_HOST="on"
+else
+    OPENCHAMBER_RELAY_HOST="off"
+fi
 exec env -i PATH="/usr/local/bin:/usr/bin:/bin" HOME="/data" LANG="C.UTF-8" \
     NODE_OPTIONS="--max-old-space-size=768" \
     LD_PRELOAD="/usr/local/lib/opencode-v2-non-dumpable.so" \
     OPENCHAMBER_DATA_DIR="/data/.config/openchamber" \
-    OPENCHAMBER_HOST="127.0.0.1" OPENCHAMBER_RELAY_HOST="off" \
+    OPENCHAMBER_HOST="127.0.0.1" OPENCHAMBER_RELAY_HOST="$OPENCHAMBER_RELAY_HOST" \
     OPENCHAMBER_SKIP_API_COMPRESSION="true" OPENCHAMBER_COMPRESS_API="false" \
     OPENCHAMBER_BUNDLED_OPENCODE_CLI_DIR="/usr/local/bin" \
     OPENCHAMBER_UPDATE_API_URL="http://127.0.0.1:8099/__ha_openchamber_update_check" \

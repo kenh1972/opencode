@@ -754,6 +754,21 @@ existing streams; sign in or pair again. Conversation history, UI settings and
 provider credentials remain persistent. The editor LSP bridge and HA inbound-MCP
 Ingress routes are not exposed on the LAN frontends.
 
+
+## OpenChamber Relay Hosting
+
+Set `interface_mode: openchamber` and enable `openchamber_relay_host`. The managed
+OpenChamber instance then hosts the pairing relay passively through the third-party
+relay service at `relay.openchamber.dev`, so devices paired through Relay (
+wss://relay.openchamber.dev/ws) stay usable after app restarts and updates.
+
+The managed instance is otherwise isolated: it is started with a scrubbed environment
+(`env -i`) and a non-dumpable preload, and its only outbound connection is to the
+OpenChamber relay service. Enabling this option adds an outbound third-party
+connection that is off by default. When `enable_openchamber_lan` is also on, the LAN
+OpenChamber process does **not** host the relay — the `ha-openchamber` service is the
+only host, and `relay-host.lock` arbitrates between processes.
+
 ## PPQ Private TEE Models (Beta)
 
 Enable **PPQ private TEE models** and set the PPQ key privately in the app options.

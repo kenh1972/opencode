@@ -419,6 +419,25 @@ describe(`${CHANNEL} bundled runtime precedence`, () => {
     assert.match(openchamber, /LD_PRELOAD="\/usr\/local\/lib\/opencode-v2-non-dumpable\.so"/);
     assert.doesNotMatch(openchamber, /SUPERVISOR_TOKEN|OPENCODE_SERVER_PASSWORD|source \/data\//);
   });
+  it("maps openchamber_relay_host to OPENCHAMBER_RELAY_HOST on and off", () => {
+    const openchamber = read(
+      ROOTFS,
+      "etc",
+      "s6-overlay",
+      "s6-rc.d",
+      "ha-openchamber",
+      "run",
+    );
+    // Reads the option from the add-on configuration with a sane default.
+    assert.match(openchamber, /bashio::config\s+'openchamber_relay_host'/);
+    // Default is off when the option is false / absent.
+    assert.match(openchamber, /OPENCHAMBER_RELAY_HOST="off"/);
+    // The env var is consumed, not hardcoded, so on/off comes from the option.
+    assert.match(openchamber, /OPENCHAMBER_RELAY_HOST="\$OPENCHAMBER_RELAY_HOST"/);
+    // Regression guard: OPENCHAMBER_RELAY_HOST is no longer pinned to "off"
+    // in the env invocation, only read from the option.
+    assert.doesNotMatch(openchamber, /OPENCHAMBER_HOST="127\.0\.0\.1"\s+OPENCHAMBER_RELAY_HOST="off"/);
+  });
 
   it("carries no update-policy option or plumbing", () => {
     assert.ok(!/opencode_update_policy/.test(read(ADDON_DIR, "config.yaml")));

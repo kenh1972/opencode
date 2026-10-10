@@ -134,6 +134,10 @@ options:
   cors_origins: []
   # Let OpenChamber desktop/mobile apps sign in to the OpenChamber LAN UI.
   openchamber_lan_native_apps: false
+  # Relay hosting for the managed OpenChamber instance. When enabled, OpenChamber
+  # hosts the pairing relay passively, so relay-paired devices (wss://relay.openchamber.dev/ws)
+  # stay usable after app restarts and updates. Off by default.
+  openchamber_relay_host: false
 
   # --- 6. Model providers ------------------------------------------------
   # Starts the internal PPQ proxy and registers native ppq-private models when
@@ -209,6 +213,7 @@ schema:
   cors_origins:
     - str
   openchamber_lan_native_apps: bool?
+  openchamber_relay_host: bool?
 
   # --- 6. Model providers ------------------------------------------------
   ppq_private_enabled: bool

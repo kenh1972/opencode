@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Add an opt-in OpenChamber relay hosting option (#151).
+
 ## 3.2.0b8
 
 - Upgrade the beta to hab 1.7.1, pinned to its exact release source, with correct version reporting and current Home Assistant API fixes.
