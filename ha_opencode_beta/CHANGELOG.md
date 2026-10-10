@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## 3.2.1b2
+
+- Fix OpenChamber prompt submission through Home Assistant Ingress returning `400: Expected object` when streaming request bodies lose their framing.
+- Add installed-browser coverage for sending a continuation prompt through the shipped UI and SDK.
+
 ## 3.2.1b1
 
 - Pass installed Home Assistant qualification for dependency audits, Ingress/screenshots, HTTPS LAN, lifecycle and live/unavailable editor behavior; public-relay phone pairing remains unverified.
