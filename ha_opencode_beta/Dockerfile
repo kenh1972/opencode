@@ -37,7 +37,7 @@ RUN --mount=type=bind,source=test/openchamber-model-fixture.cjs,target=/tmp/open
     --mount=type=bind,source=test/openchamber-model-regressions.inc.ts,target=/tmp/openchamber-model-regressions.inc.ts,readonly \
     --mount=type=bind,source=test/openchamber-usage.mjs,target=/tmp/openchamber-usage.mjs,readonly \
     node /tmp/openchamber-model-fixture.cjs /opt/openchamber-preview \
-    && (cd packages/ui && bun test src/stores/useConfigStore.test.ts) \
+    && (cd packages/ui && bun test src/stores/useConfigStore.test.ts src/lib/runtime-url.test.ts) \
     && node --test /tmp/openchamber-usage.mjs
 COPY rootfs/opt/openchamber/patch-ingress.js /tmp/patch-ingress.cjs
 RUN node /tmp/patch-ingress.cjs /opt/openchamber-preview/packages/web

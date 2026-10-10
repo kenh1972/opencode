@@ -55,7 +55,7 @@ async function runEditorLsp({ browser, page, base, session, origin, mode = 'live
     const context = await browser.createBrowserContext();
     const isolated = await context.newPage();
     await isolated.setViewport({ width: 1440, height: 1000 });
-    await isolated.setCookie({ name: 'ingress_session', value: session, domain: new URL(origin).hostname, path: '/' });
+    await context.setCookie({ name: 'ingress_session', value: session, domain: new URL(origin).hostname, path: '/' });
     const project = { id: 'ha-editor-i1-fixture', path: '/homeassistant', label: 'HA editor acceptance' };
     let settings = { ...baseline, projects: [project], activeProjectId: project.id,
       autoSaveEnabled: false, showOpenCodeUpdateNotifications: false, settingsDefaultFileViewerPreview: false };

@@ -24,7 +24,7 @@ export async function checkManagedUpdateNotice({ browser, page, base, session })
   const context = await browser.createBrowserContext();
   try {
     const isolated = await context.newPage();
-    await isolated.setCookie({ name: "ingress_session", value: session, domain: "homeassistant", path: "/" });
+    await context.setCookie({ name: "ingress_session", value: session, domain: "homeassistant", path: "/" });
     await isolated.evaluateOnNewDocument(() => {
       window.__i8SettingsSynced = false;
       window.addEventListener("openchamber:settings-synced", () => { window.__i8SettingsSynced = true; });
