@@ -49,6 +49,8 @@ COPY rootfs/opt/openchamber/patch-ingress.js /tmp/patch-ingress.cjs
 RUN node /tmp/patch-ingress.cjs /opt/openchamber-preview/packages/web
 COPY rootfs/opt/openchamber/patch-managed-backend.cjs /tmp/patch-managed-backend.cjs
 RUN node /tmp/patch-managed-backend.cjs /opt/openchamber-preview/packages/web
+COPY rootfs/opt/openchamber/patch-proxy-framing.cjs /tmp/patch-proxy-framing.cjs
+RUN node /tmp/patch-proxy-framing.cjs /opt/openchamber-preview/packages/web
 RUN rm -rf node_modules packages/*/node_modules \
     && bun install --frozen-lockfile --production --ignore-scripts \
         --filter @openchamber/web --filter @openchamber/sdk

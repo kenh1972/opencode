@@ -556,6 +556,10 @@ image acceptance remain release checks.
 Choose `terminal` or `openchamber` in **Interface**, save and restart, then open
 **OpenCode Beta** from the Home Assistant sidebar. Both interfaces use the same
 pinned V2 backend and session history through Home Assistant Ingress.
+If published `3.2.1b1` reports `session.prompt failed (400): Expected object`
+in OpenChamber, select `terminal`, save and restart as a temporary workaround.
+The error is caused by streamed prompt forwarding through the OpenChamber proxy;
+it does not require resetting or migrating the session database.
 The server and terminal start from a root-owned project directory, so `.opencode`
 content in `/homeassistant` is not discovered as project plugins. The root server
 accesses HA files directly; the attached terminal runs as UID `60001`.

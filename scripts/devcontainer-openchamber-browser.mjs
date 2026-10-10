@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { checkManagedUpdateNotice } from "./devcontainer-openchamber-update-notice.mjs";
 import { checkEditorLsp } from "./devcontainer-openchamber-editor-lsp.mjs";
+import { checkPromptAdmission } from "./devcontainer-openchamber-prompt.mjs";
 const require = createRequire("/opt/ha-mcp-server/package.json");
 const { default: puppeteer } = await import(pathToFileURL(require.resolve("puppeteer-core")).href);
 let input = "";
@@ -61,6 +62,7 @@ try {
   assert.equal(creation.status, 200, "Session creation POST must traverse Core Ingress");
   assert.equal(creation.created, true, "Created session must be readable through Ingress");
   console.log("PASS: Chromium loaded the preview and created/read/deleted a session through Core Ingress");
+  await checkPromptAdmission({ browser, page, base, session });
 
   console.log("CHECK: managed update notice");
   await checkManagedUpdateNotice({ browser, page, base, session });

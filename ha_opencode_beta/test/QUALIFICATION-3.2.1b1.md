@@ -1,5 +1,28 @@
 # Beta 3.2.1b1 qualification — 2026-10-10
 
+## Post-release correction: prompt forwarding
+
+The checks below did **not** qualify prompt submission through the rendered UI.
+Session CRUD and direct-runtime prompt tests missed an OpenChamber proxy defect:
+`session.prompt failed (400): Expected object` was reproduced through real Core
+Ingress even in a new disposable session. Direct OpenCode admission succeeded.
+The proxy removed `Transfer-Encoding` before knowing whether Express had parsed
+the request. Under Node this disables chunked framing for still-streaming routes,
+so OpenCode sees an empty request body. This is independent of session migration.
+
+The follow-up fix only reframes parsed bodies. Expanded tests first reproduced
+the failure and then passed for both streaming and parsed JSON, chunked and
+fixed-length framing, including prompt, command and empty-object requests.
+The rebuilt local fix image was installed through Supervisor and verified as
+`sha256:0704e70d16f6dd0bd123ffb5f251e86f479d8fce33dbc8aebfe98881af293856`.
+Its normal browser acceptance passed prompt admission from the built UI into the
+same session before and after page reload, plus the existing lifecycle checks.
+These synthetic prompt tests use `resume:false`: they test full request delivery
+without external model execution. This local fix image is **not** the published
+3.2.1b1 artifact, which remains affected.
+
+## Original release qualification
+
 Product source: `cbce5d3f09373979aedccbc9d6cab02dfe688eea`.
 The follow-up commit updates acceptance helpers and this evidence only.
 Stable `ha_opencode/` is unchanged.
