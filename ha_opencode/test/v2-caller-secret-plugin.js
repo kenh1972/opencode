@@ -1,17 +1,15 @@
 // Loaded only by the in-image boundary fixture, never installed as a user plugin.
 import plugin from "/opt/opencode-v2-homeassistant/plugin.js";
-import { createPluginSources } from "/opt/opencode-v2-homeassistant/node_modules/@opencode/plugin/dist/source.js";
 
 export default {
   ...plugin,
   async setup(ctx) {
     let previous;
     for (let generation = 0; generation < 3; generation++) {
-      // Exercise the pinned runtime's local source loader, not only new setup
-      // closures in a cached module. Its Bun implementation invalidates modules.
-      const sources = createPluginSources(async () => {});
-      try {
-        const { module } = await sources.read("file:///opt/opencode-v2-homeassistant/plugin.js");
+      // Exercise distinct module generations in the real host. OpenCode 2.0.26
+      // intentionally disallows importing its private plugin source loader.
+      {
+        const module = await import(new URL(`./generation-${generation}.js`, import.meta.url).href);
         if (module.createSetup === previous) throw new Error("Fixture did not reload the plugin module");
         previous = module.createSetup;
         const setup = module.createSetup();
@@ -32,7 +30,7 @@ export default {
           if (!registered) throw new Error("Reloaded plugin did not register MCP");
           await dispose();
         }
-      } finally { sources.dispose(); }
+      }
     }
     // Keep the real MCP registration for the live V2 policy/tool checks.
     const dispose = await plugin.setup(ctx);

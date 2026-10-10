@@ -104,6 +104,12 @@ chmod 600 "${RUNTIME_ROOT}/lsp-enabled"
 cp /opt/ha-mcp-server/AGENTS.md "${RUNTIME_ROOT}/config/opencode/AGENTS.md"
 mkdir "${RUNTIME_ROOT}/reload-plugin"
 cp /tmp/v2-caller-secret-plugin.js "${RUNTIME_ROOT}/reload-plugin/index.js"
+# Bun canonicalizes query-string imports of file modules. Distinct physical
+# copies exercise independent module generations through the public host API.
+cp /opt/opencode-v2-homeassistant/external-mcp.js "${RUNTIME_ROOT}/reload-plugin/external-mcp.js"
+for generation in 0 1 2; do
+    cp /opt/opencode-v2-homeassistant/plugin.js "${RUNTIME_ROOT}/reload-plugin/generation-${generation}.js"
+done
 printf '%s\n' '{"type":"module"}' > "${RUNTIME_ROOT}/reload-plugin/package.json"
 node /tmp/v2-provider-startup-fixture.mjs serve "${RUNTIME_ROOT}" >"${BOUNDARY_ROOT}/provider.log" 2>&1 &
 PROVIDER_PID=$!

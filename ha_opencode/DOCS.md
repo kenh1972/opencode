@@ -5,11 +5,16 @@ terminal or OpenChamber web workspace with one shared, app-managed backend.
 
 ## Upgrading to 3.2
 
-Stable **3.2.0** promotes beta **3.2.0b8**, with OpenCode **2.0.22**,
-OpenChamber **2.1.0** and hab **1.7.2**. Update through Home Assistant Supervisor.
+Stable **3.2.1** promotes the fixes qualified in beta **3.2.1b2**, with OpenCode
+**2.0.26**, OpenChamber **2.2.0** and hab **1.7.2**. Update through Home Assistant Supervisor.
 The first startup validates a private copy of existing V2 state before activation,
 preserving stable conversations, provider sign-ins and session permissions.
 Stable and beta retain separate app storage; beta sessions are not transferred.
+
+This release includes the Ingress prompt-body fix, migration recovery and dependency
+remediation. Four installed npm trees have zero findings; OpenChamber retains one
+explicitly integrity-checked, vendor-mitigated `braces` advisory. These audits do
+not cover OS packages or code embedded in browser bundles.
 
 ### Experimental native Assist and AI data tasks
 
@@ -114,7 +119,7 @@ at `/usr/share/doc/ha-opencode/NOTICE` and in this repository's
 
 ## OpenCode 3.2 at a glance
 
-- **Official V2 runtime**: CLI and plugin are pinned to OpenCode `2.0.22` using the official `@opencode` packages.
+- **Official V2 runtime**: CLI and plugin are pinned to OpenCode `2.0.26` using the official `@opencode` packages.
 - **Forward state upgrades**: Earlier V2 data upgrades through a validated private copy, preserving conversations, sign-ins and permissions. Successful upgrades remove obsolete generations; failed conversion preserves its input and reports an error. There is no application runtime fallback or rollback selector.
 - **V2-only runtime**: One pinned OpenCode V2 server replaces V1 and the runtime selector. The server runs as root for Home Assistant filesystem compatibility; its attached terminal runs as UID `60001`.
 - **Managed CLI**: `opencode` and `opencode2` address the same V2 server. `opencode status`, `opencode service status`, and `opencode api GET /api/info` inspect the existing server without starting another daemon.
@@ -125,7 +130,7 @@ at `/usr/share/doc/ha-opencode/NOTICE` and in this repository's
 - **ESPHome 2026.8 support**: Device Builder migrations can be previewed as validated, hash-guarded candidates; structured DNS/mDNS/ICMP troubleshooting and bounded crash decoding are available; naturally completed log and job streams now finish immediately.
 - **Startup hooks**: Your own `.sh` scripts, kept in your configuration directory, run once every time the add-on starts — the supported way to add a bridge or a small service without editing files inside the container, which never survives a restart. Off by default. See [Startup Hooks (Beta)](#startup-hooks-beta).
 - **Home context**: Sessions now start knowing your installation. A generated **Install briefing** describes your setup (version, areas, entity counts, configuration layout, integrations), **decision notes** carry lasting decisions between sessions once you approve them, and `AGENTS.local.md` holds your own instructions where add-on updates cannot overwrite them. Both options default on and switch off independently. See [Home Context (Beta)](#home-context-beta).
-- **OpenChamber V2**: The web interface is built from pinned release `2.1.0` source and its dependency lock. It attaches to the same app-owned V2 backend as the terminal, with independently supervised UI lifecycle and Ingress-adapted assets.
+- **OpenChamber V2**: The web interface is built from pinned release `2.2.0` source and a reviewed security dependency lock. It attaches to the same app-owned V2 backend as the terminal, with independently supervised UI lifecycle and Ingress-adapted assets.
 - **Native Home Assistant MCP bridge**: Optional bridge from OpenCode to Home Assistant Core's native LLM MCP endpoint (`/api/mcp/<API ID>`, default `assist`) for testing the new native LLM/MCP platform when the running Home Assistant version supports it.
 - **Compact Home Assistant context**: New `get_home_context` MCP tool gives agents focused area/domain/entity context with area and device metadata instead of broad state dumps.
 - **Native LLM provider development guide**: New `get_ha_llm_development_guide` MCP tool helps custom integration authors build `<integration>/llm.py` tool providers aligned with Home Assistant's upstream architecture.
@@ -511,9 +516,9 @@ validity; HA has no atomic conditional save, so a final read/save race remains.
 Marketplace requires HA 2026.11+. CLI updates arrive
 through app updates; use dedicated ESPHome tools for long-running firmware work.
 
-OpenChamber is built from release `2.1.0`, source commit
-`90726f9949da3408b2baf0f997e24bd71455946e`. Its web package reports upstream
-version `2.1.0`; the immutable source identifies this release. Its client
+OpenChamber is built from release `2.2.0`, source commit
+`74b79d41eac44ff38790c66f238050936083e0bb`. Its web package reports upstream
+version `2.2.0`; the immutable source identifies this release. Its client
 dependencies are independent of the app's backend pin.
 
 The UI binds to `127.0.0.1:3010` behind the app's Ingress proxy. Its backend
@@ -524,6 +529,16 @@ web interface cannot start or upgrade a separate backend. There is no V1 runtime
 Browser startup, shared history/policy and independent UI stop/start have passed
 amd64 devcontainer acceptance. Full streaming/reconnect, provider/OAuth, UI editing
 and ARM/HAOS qualification remain pending.
+
+### Optional passive relay hosting
+
+`openchamber_relay_host` is off by default and requires `interface_mode: openchamber`.
+It lets the managed UI reconnect to its configured relay for paired clients.
+Loopback tests cover signing/encryption-key preservation and restart authentication;
+**real phone/public-relay pairing and cross-network reconnection remain unverified**.
+With LAN web UI enabled, authentication remains activation-scoped and clients must
+pair again after an app restart. Ingress-only relay hosting retains its persistent
+authentication contract. Enabling hosting does not itself configure or pair a phone.
 
 ### Connecting a provider with browser sign-in
 

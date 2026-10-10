@@ -1,7 +1,7 @@
 ---
 name: "OpenCode"
 description: "AI coding agent for editing Home Assistant configuration with deep MCP integration and LSP support"
-version: "3.2.0"
+version: "3.2.1"
 slug: "ha_opencode"
 image: "ghcr.io/magnusoverli/ha_opencode"
 url: "https://github.com/magnusoverli/opencode"
@@ -134,6 +134,9 @@ options:
   cors_origins: []
   # Let OpenChamber desktop/mobile apps sign in to the OpenChamber LAN UI.
   openchamber_lan_native_apps: false
+  # Opt-in passive relay hosting; public phone/relay pairing remains unverified.
+  # LAN authentication still expires at app restart. Off by default.
+  openchamber_relay_host: false
 
   # --- 6. Model providers ------------------------------------------------
   # Starts the internal PPQ proxy and registers native ppq-private models when
@@ -209,6 +212,7 @@ schema:
   cors_origins:
     - str
   openchamber_lan_native_apps: bool?
+  openchamber_relay_host: bool?
 
   # --- 6. Model providers ------------------------------------------------
   ppq_private_enabled: bool

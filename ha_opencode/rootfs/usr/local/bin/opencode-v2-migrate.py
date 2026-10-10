@@ -30,9 +30,14 @@ FORMAT = "ha-opencode-v2-migration/v1"
 GENERATION_RE = re.compile(r"^[a-f0-9]{32}$")
 # Shipped beta generations whose native V2 schema is covered by the upgrade
 # fixture. Unknown builds and downgrades must not open a user's database.
-V2_UPGRADE_SOURCES = {"0.0.0-beta-18684", "0.0.0-beta-19242", "2.0.13"}
-V2_UPGRADE_TARGET = "2.0.22"
+V2_UPGRADE_SOURCES = {"0.0.0-beta-18684", "0.0.0-beta-19242", "2.0.13", "2.0.22"}
+V2_UPGRADE_TARGET = "2.0.26"
 MAX_DATABASE_BYTES = 32 * 1024 * 1024 * 1024
+LEGACY_WORKSPACE = "/homeassistant"
+MANAGED_WORKSPACE = "/run/opencode-v2/workspace"
+MANAGED_PROJECT_ID = hashlib.sha1(
+    f"directory:{MANAGED_WORKSPACE}".encode(), usedforsecurity=False
+).hexdigest()
 SOURCE_SESSION_COLUMNS = (
     "id",
     "project_id",
@@ -96,12 +101,19 @@ TARGET_ONLY_SESSION_DEFAULTS = {
 
 
 class MigrationError(Exception):
-    def __init__(self, code: str, *, fields: tuple[str, ...] = ()):
+    def __init__(
+        self,
+        code: str,
+        *,
+        fields: tuple[str, ...] = (),
+        details: tuple[str, ...] = (),
+    ):
         super().__init__(code)
         self.code = code
         # Column names only. Source and converted session values may contain
         # prompts, file paths, provider details, or other private data.
         self.fields = fields
+        self.details = details
 
 
 def parse_args() -> argparse.Namespace:
@@ -653,6 +665,46 @@ def synthetic_id(source: str, used: set[str]) -> str:
         salt += 1
 
 
+def legacy_tool_notice(messages: list[dict]) -> str | None:
+    """Mirror the pinned runtime's notice for tools changed since V1."""
+    start = max(
+        (index for index, message in enumerate(messages) if message["type"] == "compaction"),
+        default=-1,
+    )
+    called = {
+        item["name"]
+        for message in messages[start + 1 :]
+        if message["type"] == "assistant"
+        for item in message["data"]["content"]
+        if item.get("type") == "tool" and isinstance(item.get("name"), str)
+    }
+    renamed_tools = {"bash": "shell", "task": "subagent", "apply_patch": "patch"}
+    path_tools = ("read", "edit", "write")
+    removed_tools = ("todowrite",)
+    renamed = [name for name in renamed_tools if name in called]
+    paths = [name for name in path_tools if name in called]
+    removed = [name for name in removed_tools if name in called]
+    parts = []
+    if len(renamed) == 1:
+        parts.append(f"The `{renamed[0]}` tool is now `{renamed_tools[renamed[0]]}` and must be called by that name.")
+    elif renamed:
+        changes = "; ".join(f"`{name}` is now `{renamed_tools[name]}`" for name in renamed)
+        parts.append(f"The following tools were renamed and must be called by their new names: {changes}.")
+    if "task" in called:
+        parts.append("The `subagent` tool takes `agent` instead of `subagent_type` and `sessionID` instead of `task_id`.")
+    if len(paths) == 1:
+        parts.append(f"The `{paths[0]}` tool now takes `path` instead of `filePath`.")
+    elif paths:
+        parts.append(f"The following tools now take `path` instead of `filePath`: {', '.join(f'`{name}`' for name in paths)}.")
+    if "skill" in called:
+        parts.append("The `skill` tool now takes `id` instead of `name`.")
+    if len(removed) == 1:
+        parts.append(f"The `{removed[0]}` tool is no longer available and must not be called.")
+    elif removed:
+        parts.append(f"The following tools are no longer available and must not be called: {', '.join(f'`{name}`' for name in removed)}.")
+    return "\n\n".join(("The available tools have changed.", *parts)) if parts else None
+
+
 def v1_message_sort_key(message: dict) -> tuple:
     # OpenCode 2.0.13 sorts equal-timestamp V1 messages by id.localeCompare().
     # Python's default ordering puts uppercase before lowercase; for the
@@ -929,6 +981,17 @@ def project_session(
                 "data": assistant_data,
             }
         )
+    last = projected[-1] if projected else None
+    notice = legacy_tool_notice(projected)
+    if last is not None and notice is not None:
+        projected.append(
+            {
+                **last,
+                "id": synthetic_id(last["id"], used),
+                "type": "system",
+                "data": {"text": notice, "time": {"created": last["time_created"]}},
+            }
+        )
     for sequence, message in enumerate(projected):
         message["seq"] = sequence
     assistants = [
@@ -1042,6 +1105,9 @@ def validate_session_projection(
                 **projected_session,
                 **TARGET_ONLY_SESSION_DEFAULTS,
             }
+            if expected_session["directory"] == LEGACY_WORKSPACE:
+                expected_session["project_id"] = MANAGED_PROJECT_ID
+                expected_session["directory"] = MANAGED_WORKSPACE
             expected_session["permission"] = normalize_session_permissions(source_session["permission"])
             target_session_row = target.execute(
                 f"SELECT {', '.join(expected_session)} FROM session_v2 WHERE id=?",
@@ -1070,13 +1136,27 @@ def validate_session_projection(
                 "SELECT seq, owner_id FROM event_sequence WHERE aggregate_id=?",
                 (session_id,),
             ).fetchall()
-            if sequence_rows != [(len(expected) - 1, None)]:
-                raise MigrationError("event_sequence_mismatch")
             target_rows = target.execute(
                 "SELECT id, session_id, type, seq, time_created, time_updated, data "
                 "FROM session_message WHERE session_id=? ORDER BY seq, id",
                 (session_id,),
             ).fetchall()
+            if sequence_rows != [(len(expected) - 1, None)]:
+                actual_sequence = str(sequence_rows[0][0]) if len(sequence_rows) == 1 else (
+                    "missing" if not sequence_rows else "multiple"
+                )
+                owner_present = len(sequence_rows) == 1 and sequence_rows[0][1] is not None
+                raise MigrationError(
+                    "event_sequence_mismatch",
+                    details=(
+                        f"session_hash={hashlib.sha256(session_id.encode()).hexdigest()[:12]}",
+                        f"source_event_count={len(expected)}",
+                        f"converted_event_count={len(target_rows)}",
+                        f"expected_sequence={len(expected) - 1}",
+                        f"converted_sequence={actual_sequence}",
+                        f"owner_present={str(owner_present).lower()}",
+                    ),
+                )
             if len(target_rows) != len(expected):
                 raise MigrationError("message_count_mismatch")
             for wanted, actual in zip(expected, target_rows):
@@ -1724,6 +1804,101 @@ def restore_session_permissions(before: Path, after: Path, table: str) -> None:
         target.close()
 
 
+def normalize_managed_workspace(database: Path) -> int:
+    """Place Home Assistant sessions in the isolated project used by the V2 UI."""
+    connection = sqlite3.connect(database)
+    try:
+        count = int(connection.execute(
+            "SELECT count(*) FROM session_v2 WHERE directory=?", (LEGACY_WORKSPACE,)
+        ).fetchone()[0])
+        if count == 0:
+            return 0
+        now = int(time.time() * 1000)
+        connection.execute(
+            "INSERT OR IGNORE INTO project "
+            "(id, worktree, time_created, time_updated, time_active, sandboxes) "
+            "VALUES (?, ?, ?, ?, ?, '[]')",
+            (MANAGED_PROJECT_ID, MANAGED_WORKSPACE, now, now, now),
+        )
+        project = connection.execute(
+            "SELECT worktree FROM project WHERE id=?", (MANAGED_PROJECT_ID,)
+        ).fetchone()
+        if project != (MANAGED_WORKSPACE,):
+            raise MigrationError("managed_workspace_project_conflict")
+        connection.execute(
+            "UPDATE session_v2 SET project_id=?, directory=? WHERE directory=?",
+            (MANAGED_PROJECT_ID, MANAGED_WORKSPACE, LEGACY_WORKSPACE),
+        )
+        connection.commit()
+        return count
+    except sqlite3.Error as error:
+        connection.rollback()
+        raise MigrationError("managed_workspace_projection_failed") from error
+    finally:
+        connection.close()
+
+
+def validate_workspace_repair(before: Path, after: Path) -> None:
+    """Prove an activated-state repair changed only managed session placement."""
+    connection = sqlite3.connect(after)
+    try:
+        connection.execute("ATTACH DATABASE ? AS previous", (str(before),))
+        tables = connection.execute(
+            "SELECT name FROM previous.sqlite_master "
+            "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        ).fetchall()
+        for (table,) in tables:
+            quoted = '"' + table.replace('"', '""') + '"'
+            columns = [row[1] for row in connection.execute(
+                f"PRAGMA previous.table_info({quoted})"
+            )]
+            compared = [
+                column for column in columns
+                if table != "session_v2" or column not in {"project_id", "directory"}
+            ]
+            names = ",".join('"' + column.replace('"', '""') + '"' for column in compared)
+            missing = connection.execute(
+                f"SELECT {names} FROM previous.{quoted} EXCEPT "
+                f"SELECT {names} FROM main.{quoted} LIMIT 1"
+            ).fetchone()
+            added = None if table == "project" else connection.execute(
+                f"SELECT {names} FROM main.{quoted} EXCEPT "
+                f"SELECT {names} FROM previous.{quoted} LIMIT 1"
+            ).fetchone()
+            if missing is not None or added is not None:
+                raise MigrationError("workspace_repair_records_changed")
+        mismatch = connection.execute(
+            "SELECT 1 FROM previous.session_v2 AS old "
+            "LEFT JOIN main.session_v2 AS new ON new.id=old.id "
+            "WHERE new.id IS NULL OR new.project_id != CASE WHEN old.directory=? THEN ? ELSE old.project_id END "
+            "OR new.directory != CASE WHEN old.directory=? THEN ? ELSE old.directory END LIMIT 1",
+            (LEGACY_WORKSPACE, MANAGED_PROJECT_ID, LEGACY_WORKSPACE, MANAGED_WORKSPACE),
+        ).fetchone()
+        if mismatch is not None:
+            raise MigrationError("workspace_repair_projection_mismatch")
+        project = connection.execute(
+            "SELECT worktree FROM project WHERE id=?", (MANAGED_PROJECT_ID,)
+        ).fetchone()
+        managed_session = connection.execute(
+            "SELECT 1 FROM session_v2 WHERE project_id=? OR directory=? LIMIT 1",
+            (MANAGED_PROJECT_ID, MANAGED_WORKSPACE),
+        ).fetchone()
+        if project not in {None, (MANAGED_WORKSPACE,)} or (
+            managed_session is not None and project is None
+        ):
+            raise MigrationError("managed_workspace_project_conflict")
+        unexpected = connection.execute(
+            "SELECT id FROM main.project EXCEPT SELECT id FROM previous.project "
+            "EXCEPT SELECT ? LIMIT 1", (MANAGED_PROJECT_ID,)
+        ).fetchone()
+        if unexpected is not None:
+            raise MigrationError("workspace_repair_project_mismatch")
+    except sqlite3.Error as error:
+        raise MigrationError("workspace_repair_validation_failed") from error
+    finally:
+        connection.close()
+
+
 def validate_v2_upgrade(before: Path, after: Path) -> None:
     """Verify retained user records without logging credentials or content."""
     connection = sqlite3.connect(after)
@@ -1792,6 +1967,13 @@ def upgrade_generation(root: Path, current: str, prior: dict, args: argparse.Nam
         validate_tree(candidate)
         validate_database(target)
         validate_v2_upgrade(baseline, target)
+        # Validate the native upgrade before applying our placement projection.
+        # A separate post-upgrade baseline keeps both preservation checks exact.
+        baseline.unlink()
+        snapshot_database(target, baseline)
+        relocated = normalize_managed_workspace(target)
+        validate_database(target)
+        validate_workspace_repair(baseline, target)
         if (source_database_is_open(database)
                 or {str(path.relative_to(source)) for path in source.rglob("*") if path.is_file()} != hashes.keys()
                 or any(sha256(source / name) != digest for name, digest in hashes.items())):
@@ -1802,14 +1984,17 @@ def upgrade_generation(root: Path, current: str, prior: dict, args: argparse.Nam
             **prior, "status": "validated", "generation": generation,
             "target_version": args.target_version,
             "upgraded_from_version": prior["target_version"],
+            "workspace_projection": MANAGED_WORKSPACE,
             "target": {
                 "session_count": table_count(target, "session_v2", required=True),
                 "message_count": table_count(target, "session_message", required=True),
                 "provider_auth_count": table_count(target, "credential", required=True),
+                "relocated_session_count": relocated,
             },
         }
         validated.pop("previous_generation", None)
         atomic_json(candidate / "generation.json", validated)
+        prepare_generation_ownership(candidate, args.runtime_user)
         fsync_tree(candidate)
         os.replace(candidate, activated)
         fsync_directory(root / "generations")
@@ -1821,6 +2006,83 @@ def upgrade_generation(root: Path, current: str, prior: dict, args: argparse.Nam
         if load_current(root) != generation:
             remove_private_tree(activated)
         raise
+
+
+def repair_generation_workspace(root: Path, current: str, prior: dict, args: argparse.Namespace) -> dict:
+    source = root / "generations" / current
+    validate_tree(source)
+    database = source / "data" / "opencode" / "opencode.db"
+    ensure_plain_file(database)
+    if source_database_is_open(database):
+        raise MigrationError("source_database_in_use")
+    source_files = {str(path.relative_to(source)): path for path in source.rglob("*") if path.is_file()}
+    total = sum(path.stat().st_size for path in source_files.values())
+    if total > MAX_DATABASE_BYTES or shutil.disk_usage(root).free < total * 3 + 256 * 1024 * 1024:
+        raise MigrationError("insufficient_space")
+    hashes = {name: sha256(path) for name, path in source_files.items()}
+    generation = uuid.uuid4().hex
+    candidate = root / "work" / generation
+    activated = root / "generations" / generation
+    try:
+        shutil.copytree(source, candidate)
+        # Older generations can lack this empty converter home. Repair only
+        # candidate scaffolding; persistent data/config/state must already exist.
+        ensure_plain_directory(candidate / "home", create=True)
+        target = candidate / "data" / "opencode" / "opencode.db"
+        baseline = candidate / ".workspace-validation.db"
+        snapshot_database(target, baseline)
+        relocated = normalize_managed_workspace(target)
+        validate_database(target)
+        validate_workspace_repair(baseline, target)
+        if (source_database_is_open(database)
+                or {str(path.relative_to(source)) for path in source.rglob("*") if path.is_file()} != hashes.keys()
+                or any(sha256(source / name) != digest for name, digest in hashes.items())):
+            raise MigrationError("source_changed")
+        baseline.unlink()
+        validated = {
+            **prior,
+            "status": "validated",
+            "generation": generation,
+            "previous_generation": current,
+            "workspace_projection": MANAGED_WORKSPACE,
+            "target": {
+                **prior.get("target", {}),
+                "relocated_session_count": relocated,
+            },
+        }
+        atomic_json(candidate / "generation.json", validated)
+        prepare_generation_ownership(candidate, args.runtime_user)
+        fsync_tree(candidate)
+        os.replace(candidate, activated)
+        fsync_directory(root / "generations")
+        atomic_text(root / "current", generation + "\n")
+        finalize_generation(root, generation, {**validated, "status": "activated"})
+        return {"status": "repaired", "generation": generation}
+    except Exception:
+        remove_private_tree(candidate)
+        if load_current(root) != generation:
+            remove_private_tree(activated)
+        raise
+
+
+def generation_needs_home_repair(generation: Path) -> bool:
+    validate_tree(generation)
+    for leaf in ("config", "data", "state"):
+        try:
+            ensure_plain_directory(generation / leaf)
+        except MigrationError as error:
+            if error.code == "missing_directory":
+                raise MigrationError("missing_generation_state", fields=(leaf,)) from error
+            raise
+    database = generation / "data" / "opencode" / "opencode.db"
+    if not database.exists():
+        raise MigrationError("missing_generation_database")
+    ensure_plain_file(database)
+    home = generation / "home"
+    if home.exists() or home.is_symlink():
+        ensure_plain_directory(home)
+        return False
+    return True
 
 
 def prepare_generation_ownership(generation: Path, runtime_user: str | None) -> None:
@@ -1869,8 +2131,11 @@ def prepare(args: argparse.Namespace) -> dict:
         reconcile_private_state(root, current)
         if current:
             result = generation_result(root, current)
+            missing_home = generation_needs_home_repair(generations / current)
             if result.get("target_version") != args.target_version:
                 return upgrade_generation(root, current, result, args)
+            if result.get("workspace_projection") != MANAGED_WORKSPACE or missing_home:
+                return repair_generation_workspace(root, current, result, args)
             prepare_generation_ownership(generations / current, args.runtime_user)
             finalize_generation(root, current, result)
             return {"status": "already_activated", "generation": current}
@@ -1976,9 +2241,12 @@ def prepare(args: argparse.Namespace) -> dict:
                 )
             target_database = target_data / "opencode.db"
             validate_tree(candidate)
+            relocated_sessions = 0
+            if source_info["database"]:
+                relocated_sessions = normalize_managed_workspace(target_database)
+                restore_session_permissions(validation_database, target_database, "session")
             validate_database(target_database)
             if source_info["database"]:
-                restore_session_permissions(validation_database, target_database, "session")
                 target_sessions, target_messages, validated_content_parts = validate_session_projection(
                     validation_database, target_database
                 )
@@ -2024,8 +2292,10 @@ def prepare(args: argparse.Namespace) -> dict:
                     "message_count": target_messages,
                     "validated_content_part_count": validated_content_parts,
                     "provider_auth_count": target_credentials,
+                    "relocated_session_count": relocated_sessions,
                 },
                 "target_version": args.target_version,
+                "workspace_projection": MANAGED_WORKSPACE,
             }
             atomic_json(candidate / "generation.json", validated)
             fsync_tree(candidate)
@@ -2054,6 +2324,7 @@ def prepare(args: argparse.Namespace) -> dict:
                     "generation": generation,
                     "error": failure.code,
                     **({"error_fields": list(failure.fields)} if failure.fields else {}),
+                    **({"error_details": list(failure.details)} if failure.details else {}),
                     "target_version": args.target_version,
                 },
             )
@@ -2071,7 +2342,8 @@ def main() -> int:
         return 0
     except MigrationError as error:
         fields = f" (fields: {', '.join(error.fields)})" if error.fields else ""
-        print(f"OpenCode V2 migration deferred: {error.code}{fields}", file=sys.stderr)
+        details = f" (details: {', '.join(error.details)})" if error.details else ""
+        print(f"OpenCode V2 migration deferred: {error.code}{fields}{details}", file=sys.stderr)
         return 1
     except Exception:
         print("OpenCode V2 migration deferred: migration_internal_error", file=sys.stderr)
