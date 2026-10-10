@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 
 ## 3.2.1
 
+- Pass stable amd64/arm64 boundary checks and an actual Supervisor upgrade from 3.2.0, preserving an existing session and verifying Ingress continuation on the installed candidate.
 - Upgrade to OpenCode CLI/plugin **2.0.26**, OpenChamber **2.2.0** and Puppeteer **25.13.0**; retain existing stable sessions, sign-ins and settings through validated copy-on-write migration.
 - Fix OpenChamber Ingress prompt submission returning **`400: Expected object`**; verify continuation in the same session before and after page reload (#178).
 - Fix V1 migration sequence validation, missing converter-home recovery and first-upgrade history placement; thanks @loopy321 for #161 and the reporters in #160/#163. General cross-location picker behavior remains separate.
