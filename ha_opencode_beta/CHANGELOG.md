@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## 3.2.1b1
+
+- Pass installed Home Assistant qualification for dependency audits, Ingress/screenshots, HTTPS LAN, lifecycle and live/unavailable editor behavior; public-relay phone pairing remains unverified.
+- Make installed browser qualification use Supervisor's actual Home Assistant port.
 - Expand beta dependency qualification to OpenChamber's shipped packages, with explicit security overrides and a reproducible lock.
 - Preserve trusted server Git settings with simple-git 4 while retaining project-variable and command-injection guards.
 - Bound the unfixed upstream braces recursion advisory with a tested vendor patch, retaining the advisory visibly in audit reports.

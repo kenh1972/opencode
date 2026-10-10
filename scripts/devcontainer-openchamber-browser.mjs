@@ -9,7 +9,8 @@ const require = createRequire("/opt/ha-mcp-server/package.json");
 const { default: puppeteer } = await import(pathToFileURL(require.resolve("puppeteer-core")).href);
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
-const { entry, session, livePrompt = false, editorLspMode = null, editorLspArtifactDirectory } = JSON.parse(input);
+const { entry, session, corePort = 8123, livePrompt = false, editorLspMode = null, editorLspArtifactDirectory } = JSON.parse(input);
+assert.ok(Number.isInteger(corePort) && corePort > 0 && corePort <= 65535);
 assert.match(entry, /^\/api\/hassio_ingress\/[^/]+\/?$/);
 const base = entry.replace(/\/$/, "") + "/";
 const browser = await puppeteer.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox", "--disable-dev-shm-usage"] });
@@ -26,7 +27,7 @@ try {
     if (response.ok() && url.pathname.startsWith(base)) successful.add(url.pathname.slice(base.length));
     if ((url.pathname.startsWith("/assets/") || url.pathname.startsWith("/api/")) && !url.pathname.startsWith(base)) escaped.push(response.status());
   });
-  const response = await page.goto(`http://homeassistant:8123${base}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  const response = await page.goto(`http://homeassistant:${corePort}${base}`, { waitUntil: "domcontentloaded", timeout: 30000 });
   assert.equal(response.status(), 200);
   await page.waitForFunction(() => document.querySelector("#root")?.children.length > 0, { timeout: 30000 });
   await new Promise((resolve) => setTimeout(resolve, 5000));
