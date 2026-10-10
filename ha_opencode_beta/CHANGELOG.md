@@ -4,6 +4,8 @@
 
 - Add opt-in OpenChamber relay reconnection across restarts when LAN web UI is disabled; LAN-enabled clients retain activation-scoped authentication and must pair again (#151). Thanks @edouardkleinhans.
 
+- Restore the shared OpenCode update checker for V2-only channels and fail on inconsistent build pins; thanks @edouardkleinhans (#144).
+
 ## 3.2.0b8
 
 - Upgrade the beta to hab 1.7.1, pinned to its exact release source, with correct version reporting and current Home Assistant API fixes.
