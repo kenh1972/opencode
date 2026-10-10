@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 - Refresh beta Node 24 LTS, yq, Prettier, tsx and compatible dependency floors while retaining OpenCode 2.0.22/OpenChamber 2.1.0; thanks @edouardkleinhans for the remaining upgrade work in #144.
+- Restore the shared OpenCode update checker for V2-only channels and fail on inconsistent build pins; thanks @edouardkleinhans (#144).
+
 ## 3.2.0b8
 
 - Upgrade the beta to hab 1.7.1, pinned to its exact release source, with correct version reporting and current Home Assistant API fixes.
