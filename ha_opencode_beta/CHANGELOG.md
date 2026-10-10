@@ -7,6 +7,7 @@
 - Fix V1-to-V2 migration failures with `event_sequence_mismatch` by validating the synthetic tool-compatibility notice added by OpenCode 2.0.22, and relocate migrated `/homeassistant` sessions into the isolated project used by the V2 UI so existing history remains visible. Previously activated generations receive the same placement fix through a validated copy-on-write repair. Watermark failures now report only a hashed session identifier and structural counts, never conversation content ([#158](https://github.com/magnusoverli/opencode/issues/158), [#160](https://github.com/magnusoverli/opencode/issues/160)).
 - Add opt-in OpenChamber relay reconnection across restarts when LAN web UI is disabled; LAN-enabled clients retain activation-scoped authentication and must pair again (#151). Thanks @edouardkleinhans.
 
+- Refresh beta Node 24 LTS, yq, Prettier, tsx and compatible dependency floors while retaining OpenCode 2.0.22/OpenChamber 2.1.0; thanks @edouardkleinhans for the remaining upgrade work in #144.
 - Restore the shared OpenCode update checker for V2-only channels and fail on inconsistent build pins; thanks @edouardkleinhans (#144).
 
 ## 3.2.0b8
