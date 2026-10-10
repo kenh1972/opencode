@@ -1967,6 +1967,13 @@ def upgrade_generation(root: Path, current: str, prior: dict, args: argparse.Nam
         validate_tree(candidate)
         validate_database(target)
         validate_v2_upgrade(baseline, target)
+        # Validate the native upgrade before applying our placement projection.
+        # A separate post-upgrade baseline keeps both preservation checks exact.
+        baseline.unlink()
+        snapshot_database(target, baseline)
+        relocated = normalize_managed_workspace(target)
+        validate_database(target)
+        validate_workspace_repair(baseline, target)
         if (source_database_is_open(database)
                 or {str(path.relative_to(source)) for path in source.rglob("*") if path.is_file()} != hashes.keys()
                 or any(sha256(source / name) != digest for name, digest in hashes.items())):
@@ -1977,14 +1984,17 @@ def upgrade_generation(root: Path, current: str, prior: dict, args: argparse.Nam
             **prior, "status": "validated", "generation": generation,
             "target_version": args.target_version,
             "upgraded_from_version": prior["target_version"],
+            "workspace_projection": MANAGED_WORKSPACE,
             "target": {
                 "session_count": table_count(target, "session_v2", required=True),
                 "message_count": table_count(target, "session_message", required=True),
                 "provider_auth_count": table_count(target, "credential", required=True),
+                "relocated_session_count": relocated,
             },
         }
         validated.pop("previous_generation", None)
         atomic_json(candidate / "generation.json", validated)
+        prepare_generation_ownership(candidate, args.runtime_user)
         fsync_tree(candidate)
         os.replace(candidate, activated)
         fsync_directory(root / "generations")

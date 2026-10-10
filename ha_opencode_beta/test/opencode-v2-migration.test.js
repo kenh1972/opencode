@@ -575,7 +575,8 @@ describe("OpenCode V2 copy-on-write migration", () => {
       "c=sqlite3.connect(sys.argv[1])",
       "c.execute(\"INSERT OR IGNORE INTO project (id,worktree,time_created,time_updated,sandboxes) VALUES (?,?,?,?,?)\", ('global','/',1,1,'[]'))",
       "c.execute(\"INSERT INTO credential (id,integration_id,label,value,time_created,time_updated) VALUES (?,?,?,?,?,?)\", ('v2-auth','anthropic','API key',json.dumps({'type':'key','key':sys.argv[2]}),1,1))",
-      "c.execute(\"INSERT INTO session_v2 (id,project_id,slug,directory,title,version,time_created,time_updated,permission) VALUES (?,?,?,?,?,?,?,?,?)\", ('ses_upgrade','global','upgrade','/tmp/upgrade','Preserved conversation','2',1,2,json.dumps([{'action':'shell','resource':'*','effect':'deny'}])))",
+      "c.execute(\"INSERT INTO session_v2 (id,project_id,slug,directory,title,version,time_created,time_updated,permission) VALUES (?,?,?,?,?,?,?,?,?)\", ('ses_upgrade','global','upgrade','/homeassistant','Preserved conversation','2',1,2,json.dumps([{'action':'shell','resource':'*','effect':'deny'}])))",
+      "c.execute(\"INSERT INTO session_v2 (id,project_id,slug,directory,title,version,time_created,time_updated) VALUES (?,?,?,?,?,?,?,?)\", ('ses_other','global','other','/tmp/other','Other project','2',3,4))",
       "c.execute(\"INSERT INTO session_message (id,session_id,type,seq,time_created,time_updated,data) VALUES (?,?,?,?,?,?,?)\", ('msg_upgrade','ses_upgrade','user',0,1,2,json.dumps({'text':'Keep this conversation','time':{'created':1}})))",
       "c.commit()", "c.close()",
     ].join("; "), database, AUTH_SECRET], { encoding: "utf8" });
@@ -610,6 +611,21 @@ describe("OpenCode V2 copy-on-write migration", () => {
     const marker = JSON.parse(await readFile(join(current, "generation.json"), "utf8"));
     assert.equal(marker.previous_generation, undefined);
     assert.equal(marker.target_version, TARGET_VERSION);
+    assert.equal(marker.workspace_projection, "/run/opencode-v2/workspace");
+    assert.equal(marker.target.relocated_session_count, 1);
+    const placement = spawnSync(python, ["-c", [
+      "import json,sqlite3,sys",
+      "c=sqlite3.connect(sys.argv[1])",
+      "print(json.dumps(c.execute('SELECT id,project_id,directory,permission FROM session_v2 ORDER BY id').fetchall()))",
+      "c.close()",
+    ].join("; "), join(current, "data", "opencode", "opencode.db")], { encoding: "utf8" });
+    assert.equal(placement.status, 0, placement.stderr);
+    const sessions = JSON.parse(placement.stdout);
+    assert.deepEqual(sessions[0], ["ses_other", "global", "/tmp/other", null]);
+    assert.deepEqual(sessions[1].slice(0, 3), [
+      "ses_upgrade", "4367e1ff78860babd3300c32613d92cb06a1125b", "/run/opencode-v2/workspace",
+    ]);
+    assert.deepEqual(JSON.parse(sessions[1][3]), [{ action: "shell", resource: "*", effect: "deny" }]);
 
     const restarted = runMigrator(python, args);
     assert.equal(restarted.status, 0, restarted.stderr);
