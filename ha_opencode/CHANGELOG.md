@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Clarify HA 2026.10 MCP setup, Assist versus Your MCP API, and the reverse read-only connection in docs and configuration help; defaults are unchanged.
 - Make issue and pull-request references clickable in the changelog and release notes.
 
 ## 3.2.1

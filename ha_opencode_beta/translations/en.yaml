@@ -60,18 +60,18 @@ configuration:
 
   native_ha_mcp_enabled:
     name: "Native Home Assistant MCP bridge (beta)"
-    description: "Adds a second MCP server that proxies to Home Assistant Core's own native LLM MCP endpoint. Requires the MCP Server integration to be set up in Home Assistant first. The keyed /api/mcp/<API ID> endpoints and the native LLM tool platforms first ship in Home Assistant 2026.8; on earlier versions the bridge falls back to the configured /api/mcp endpoint. This complements the MCP integration above rather than replacing it; leave it off unless you are testing Home Assistant's native LLM platform."
+    description: "Adds Home Assistant's native LLM tools alongside this app's bundled MCP tools, without replacing them. HA's MCP Server is built into Core but must be enabled: on HA 2026.10+, use Settings > System > AI > Model Context Protocol; on older versions, add the Model Context Protocol Server integration. Defaults to the Assist URL, not Your MCP API. No URL or access token needs to be pasted. Restart the app after changes; leave this off unless you want to test the native bridge."
 
   native_ha_mcp_api_id:
     name: "Native MCP API ID"
-    description: "Applies only when the native bridge above is on. The default 'assist' targets /api/mcp/assist; leave it empty to use every LLM API selected in the MCP Server integration. Any registered API ID is reachable from here: Home Assistant requires admin access for keyed IDs other than 'assist', and the Supervisor calls Home Assistant Core as its own admin system user."
+    description: "Applies only when the native bridge is on. Matches HA's AI settings: 'assist' (default) uses Assist (/api/mcp/assist); an empty value uses Your MCP API (/api/mcp), combining HA's selected LLM APIs or all registered APIs when Expose all LLM APIs is on. New HA 2026.10 setups default to all APIs, including later additions. Use another registered API ID for a specific API, not a full URL. Supervisor supplies admin authentication. Save and restart the app after changing this."
 
   ha_assist_enabled:
     name: Native Assist and AI data tasks (experimental)
     description: Install the bundled OpenCode Assist companion and enable its scoped adapter. Restart Home Assistant after installation or updates, then configure the discovered OpenCode Assist integration in Settings → Devices & services. Manual or edited integrations are preserved and reported as conflicts; disabling keeps installed files. Requires HA 2026.10; model usage may incur provider charges.
   ha_mcp_server_enabled:
     name: "Expose read-only MCP to Home Assistant"
-    description: "Enable and restart, then confirm the discovered MCP integration in Home Assistant (app discovery targets Core 2026.10). HTTP and HTTPS work; no credentials are needed for new setups. Allows installation-wide state, device, area and calendar reads from the HA host network, including other host-network apps, not just Assist-exposed entities. No control/coding tools or host ports. Existing OAuth setups remain authenticated; independent of OpenCode's own MCP settings."
+    description: "Opposite direction to the native bridge: lets HA conversation agents use this app's read-only tools. Enable and restart, then confirm the discovered Model Context Protocol integration in HA 2026.10+. Its API can appear as Home Assistant Read-Only in HA's AI settings; it is not the bridge's default Assist target. HTTP and HTTPS work; no credentials are needed for new setups. Reads are installation-wide (not just Assist-exposed entities), accessible from the HA host network including other host-network apps. No control/coding tools or host ports. Existing OAuth setups remain authenticated; independent of OpenCode's own MCP settings."
 
   home_briefing_enabled:
     name: "Install briefing"

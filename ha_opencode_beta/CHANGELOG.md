@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Clarify HA 2026.10 MCP setup, Assist versus Your MCP API, and the reverse read-only connection in docs and configuration help; defaults are unchanged.
+
 ## 3.2.2b0
 
 - Pass native amd64/arm64 checks and installed beta upgrade, TUI persistence and Ingress continuation checks; retain disclosure of the vendor-mitigated braces advisory.

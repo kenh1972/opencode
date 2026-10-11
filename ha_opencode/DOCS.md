@@ -408,6 +408,22 @@ For x64 VM installs, make sure the guest can see AVX2 when the host supports it.
 
 ## Native Home Assistant MCP Bridge (Beta)
 
+Home Assistant's MCP Server is **built into Core**: no separate download or add-on is needed, but it must be enabled. On **HA 2026.10+**, go to **Settings → System → AI** and enable **Model Context Protocol**. This sets up the existing MCP Server integration; it is not a new, separate server.
+
+OpenCode's own bundled `homeassistant` MCP supplies configuration, validation, diagnostics and administration tools independently of HA's native server. The optional bridge adds `homeassistant_native`; it complements, rather than replaces, those bundled tools.
+
+### Which URL in HA's AI settings?
+
+**The native bridge defaults to Assist, not the first “Your MCP API” URL.** The add-on builds the URL and authenticates through Supervisor, so you do not need to paste a URL or supply an access token.
+
+| Entry in HA's MCP card | Endpoint | How it relates to this app |
+| --- | --- | --- |
+| **Your MCP API** | `/api/mcp` | Combines the LLM APIs selected in HA's MCP Server configuration. Leave **Native MCP API ID** empty to use it. |
+| **Assist** | `/api/mcp/assist` | The native bridge's default, with **Native MCP API ID** set to `assist`; focused home-control and context tools. |
+| **Home Assistant Read-Only** (when enabled and connected) | `/api/mcp/mcp-<app-slug>` | This app's read-only tools made available through HA. Created by **Expose read-only MCP to Home Assistant**, the opposite-direction connection; not the native bridge's default target. |
+
+On new HA 2026.10 MCP Server setups, **Your MCP API** exposes all registered LLM APIs by default, including APIs added later; older setups retain their selections. It can include the app's read-only API as well. A larger catalogue can mean more tools and overlap with the bundled MCP, but does not automatically grant unrestricted HA administration. Keep `assist` for focused home control, or deliberately leave the API ID empty to use HA's combined selection. Save and restart the add-on after changing the bridge settings. See [Expose Read-Only MCP to Home Assistant](#expose-read-only-mcp-to-home-assistant) for the reverse connection.
+
 Home Assistant has a native `llm` integration and native MCP endpoints for registered LLM APIs. PR [home-assistant/developers.home-assistant#3236](https://github.com/home-assistant/developers.home-assistant/pull/3236) documents the contract: every registered LLM API is exposed at `/api/mcp/<API ID>` once Home Assistant's MCP Server integration is set up. The built-in Assist API uses the API ID `assist`.
 
 **Which Home Assistant version you need:** the `llm` integration, the per-domain LLM tool platforms, and the keyed `/api/mcp/<API ID>` endpoints all first ship in **Home Assistant 2026.8**. On 2026.7.x and earlier, Home Assistant serves only the configured `/api/mcp` endpoint and the legacy `/mcp_server/sse` transport. In every case the **MCP Server** integration must be added in Home Assistant first — the endpoints are not served otherwise.
@@ -418,8 +434,8 @@ When **Native Home Assistant MCP bridge (beta)** is on, the add-on adds a second
 
 The bridge is **off by default**, and Home Assistant does not serve its MCP endpoints until you set the integration up. Two one-time steps, in this order:
 
-1. **Add the Model Context Protocol Server integration in Home Assistant.** Go to **Settings → Devices & Services → Add Integration** and add **Model Context Protocol Server**. Until this exists, Home Assistant registers no `/api/mcp` routes at all and the bridge has nothing to talk to on any version.
-2. **Turn on the bridge in the add-on and restart it.** Set **Enable native Home Assistant MCP bridge** to on in the add-on's Configuration tab, then restart the add-on. The setting is read once at start-up, so it does not take effect until the restart.
+1. **Enable Home Assistant's built-in MCP Server.** On **HA 2026.10+**, go to **Settings → System → AI** and enable **Model Context Protocol**. If it is already enabled, do not add it again. On older versions, use **Settings → Devices & Services → Add Integration → Model Context Protocol Server**. Until the integration is set up, the bridge has nothing to talk to.
+2. **Turn on the bridge in the add-on and restart it.** Enable **Native Home Assistant MCP bridge (beta)** (`native_ha_mcp_enabled`) in the add-on's Configuration tab. Keep **Native MCP API ID** (`native_ha_mcp_api_id`) at `assist` for the default Assist URL, or leave it empty for **Your MCP API**, then restart the add-on. The settings are read at start-up.
 
 To confirm it worked, ask OpenCode to run `get_agent_capabilities`: it reports the detected Home Assistant version, bridge status, which endpoint resolved, and any upstream limitations that still apply. Use `homeassistant_native` only when the bridge status is `enabled_and_reachable`; a reachable endpoint with a disabled bridge is not exposed to OpenCode. Initialization is not proof of catalog loading or execution; verify an appropriate read-only native tool next. In OpenCode you should see `homeassistant_native` alongside `homeassistant`.
 
@@ -461,7 +477,7 @@ Run `get_agent_capabilities` to see what the running instance supports; it repor
 
 The two MCP servers are intentionally separate:
 
-- `homeassistant_native`: Home Assistant's curated native LLM API tools from the configured `/api/mcp/<API ID>` endpoint when available.
+- `homeassistant_native`: Home Assistant's native LLM API tools from `/api/mcp/assist` by default, another `/api/mcp/<API ID>` when selected, or the combined `/api/mcp` endpoint when the API ID is empty.
 - `homeassistant`: OpenCode's add-on tools for configuration editing, validation, diagnostics, screenshots, updates, ESPHome, Zigbee, add-on development, and documentation lookup.
 
 ### Native prompts and current context
@@ -574,10 +590,7 @@ OpenCode into a conversation agent. It works independently of local MCP enableme
 and the conversation interface.
 The private V2 MCP sidecar is unchanged and never advertised to Home Assistant.
 
-Automatic app discovery requires [Core PR #180378](https://github.com/home-assistant/core/pull/180378),
-merged into the **2026.10 development line** and absent from 2026.9.1. The expected
-first stable release is 2026.10.0; verify the shipped Core release before relying
-on discovery. Existing OpenCode functionality is unchanged on older versions.
+Automatic app discovery ships in **Home Assistant 2026.10** ([Core PR #180378](https://github.com/home-assistant/core/pull/180378)) and is absent from 2026.9.1. Once connected, this app's API can appear as **Home Assistant Read-Only** under **Individual MCP APIs** on HA's **Settings → System → AI** page. This is not the Assist endpoint used by the native bridge by default. Existing OpenCode functionality is unchanged on older versions.
 
 ### Setup
 
