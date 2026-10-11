@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, mkdir, rm, writeFile, symlink, chmod } from "node:fs/promises";
+import { readFile, mkdtemp, mkdir, rm, writeFile, symlink, chmod, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it } from "node:test";
@@ -158,6 +158,10 @@ describe("native MCP startup file and API boundary", () => {
     const root = await mkdtemp(join(parent, "mcp-startup-cli-"));
     try {
       const mock = join(root, "supervisor.mjs"), remote = join(root, "supervisor.json");
+      // Image fixtures reach /opt through a temporary rootfs symlink. Invoke the
+      // actual file so the production CLI entrypoint guard executes, not merely
+      // imports the module and exits successfully without doing migration work.
+      const startupCli = await realpath(fileURLToPath(new URL("../rootfs/opt/opencode-v2-homeassistant/mcp-startup.js", import.meta.url)));
       await writeFile(mock, `
         import { readFileSync, writeFileSync } from "node:fs";
         globalThis.fetch = async (url, init) => {
@@ -179,7 +183,7 @@ describe("native MCP startup file and API boundary", () => {
         const output = join(root, "runtime.json");
         const run = () => {
           const child = spawnSync(process.execPath, ["--import", pathToFileURL(mock).href,
-            fileURLToPath(new URL("../rootfs/opt/opencode-v2-homeassistant/mcp-startup.js", import.meta.url)), data, output], {
+            startupCli, data, output], {
             encoding: "utf8", timeout: 10000,
             env: { ...process.env, SUPERVISOR_TOKEN: "fixture-supervisor", FIXTURE_OPTIONS: remote },
           });
