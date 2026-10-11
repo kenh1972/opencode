@@ -131,7 +131,7 @@ Includes the [Home Assistant Builder CLI](https://github.com/balloob/home-assist
 An opt-in, persistent place for your own scripts to run at add-on startup — everything else in the container is rebuilt from the image on every restart, so this is the supported way to make your own customizations stick.
 
 #### 🧭 **HA Native LLM Ready**
-Home Assistant's native `llm` platform ships in **2026.8**. OpenCode's native MCP bridge targets it, while bundled tools remain available independently. Stable remains opt-in; beta enables native tools on new installs and preserves effective enabled/disabled state on upgrades.
+Home Assistant's native `llm` platform ships in **2026.8**. OpenCode's native MCP bridge targets it, while bundled tools remain available independently. Stable 3.2.2 and beta enable native tools on new installs and preserve effective enabled/disabled state on upgrades.
 
 </td>
 </tr>
@@ -219,7 +219,7 @@ Home Assistant is building native `llm` platform support directly into Core: the
 
 HA's MCP Server is **built into Core**, not a separate download or add-on. On **HA 2026.10+**, enable it under **Settings → System → AI → Model Context Protocol** (on older versions, add the **Model Context Protocol Server** integration). Review the app's native toggle and restart. Beta's **Home Assistant native tools** is independent of bundled and external MCP activation; HAB remains available through bundled Full tools. Connection/initialization status is not proof that tools have loaded: verify a suitable read-only native tool.
 
-**Which HA URL does the bridge use?** Stable retains its opt-in Assist default. Beta uses **Your MCP API** (`/api/mcp`) for new installs and migrates legacy Assist selections once, preserving custom APIs and disabled states. Beta's **Native tool selection** offers `home_assistant`, `assist`, and `custom`; explicit choices made after migration are retained. `/api/mcp` follows HA's selected APIs and can include later additions when **Expose all LLM APIs** is on. No URL or token needs to be pasted. See [beta migration and rollback guidance](ha_opencode_beta/DOCS.md#upgrade-policy-assist-to-ha-configured-mcp) before upgrading. **Home Assistant Read-Only** is the separate reverse-sharing connection.
+**Which HA URL does the bridge use?** Stable 3.2.2 and beta use **Your MCP API** (`/api/mcp`) for new installs and migrate legacy Assist selections once, preserving custom APIs and disabled states. **Native tool selection** offers `home_assistant`, `assist`, and `custom`; explicit choices made after migration are retained. `/api/mcp` follows HA's selected APIs and can include later additions when **Expose all LLM APIs** is on. No URL or token needs to be pasted. See [migration and rollback guidance](ha_opencode/DOCS.md#upgrade-policy-assist-to-ha-configured-mcp) before upgrading. **Home Assistant Read-Only** is the separate reverse-sharing connection.
 
 OpenCode's own MCP tools remain the complete, supported working surface regardless of bridge status — this roadmap is about *adding* native capabilities where they fit well, not replacing safe config writing, validation, admin/dev workflows, screenshots, firmware updates, or troubleshooting.
 

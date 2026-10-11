@@ -3,7 +3,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-- Clarify HA 2026.10 MCP setup, Assist versus Your MCP API, and the reverse read-only connection in docs and configuration help; defaults are unchanged.
+- Promote beta 3.2.2b1 with independent native MCP, verified startup settings migration, persistent TUI preferences and opt-in formatting/plugin controls.
+
+## 3.2.2
+
+- Promote beta 3.2.2b1; retain pinned OpenCode CLI/plugin **2.0.26**, OpenChamber **2.2.0** and HAB **1.7.2**, stable identity and separate channel storage.
+- Enable native MCP independently on new installs and migrate legacy Assist selections once to HA-configured `/api/mcp`; preserve custom API choices and effective enabled/disabled states with verified startup persistence.
+- Keep bundled, native and external MCP activation independent; Full bundled tools retain HAB access and disabled bundled routes reject stale clients. The app does not enable or reconfigure HA's MCP Server.
+- Persist terminal preferences across restarts/updates; make whole-file YAML formatting opt-in and preserve authenticated ESPHome edit placeholders through redaction.
+- Add default-off third-party plugin loading through upstream V2; plugins are trusted root-level backend code, with documented persistence and disable-to-recover behavior ([#166](https://github.com/magnusoverli/opencode/issues/166)).
+- Show bounded migration recovery diagnostics while preserving unknown files and conversation history; document native scope expansion, explicit Assist opt-back and backup-based rollback.
+- Automated/native-image qualification does not establish installed Supervisor fresh-install, upgrade or rollback acceptance for 3.2.2; those remain unverified.
 - Make issue and pull-request references clickable in the changelog and release notes.
 
 ## 3.2.1

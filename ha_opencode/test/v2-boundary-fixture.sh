@@ -70,6 +70,7 @@ start_sidecar() {
     rm -f "${RUNTIME_ROOT}/mcp-sidecar.ready"
     env -i HOME=/data USER=root LOGNAME=root PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 \
         SUPERVISOR_TOKEN=image-fixture-token OPENCODE_MCP_TOOL_PROFILE=full \
+        OPENCODE_MCP_ENABLED="${1:-true}" \
         OPENCODE_MCP_TRANSPORT=streamable-http \
         OPENCODE_MCP_SIDECAR_SOCKET="${RUNTIME_ROOT}/mcp-sidecar.sock" \
         OPENCODE_MCP_SIDECAR_PUBLIC_HOST="127.0.0.1:${PROXY_PORT}" \
@@ -209,4 +210,17 @@ SIDECAR_URL="http://127.0.0.1:${PROXY_PORT}/mcp" \
 SIDECAR_NATIVE_URL="http://127.0.0.1:${PROXY_PORT}/native-mcp" node --input-type=module -e \
     'import { readFileSync } from "node:fs"; import { Client } from "/opt/ha-mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js"; import { StreamableHTTPClientTransport } from "/opt/ha-mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js"; const secret=readFileSync(process.env.SIDECAR_SECRET_FILE,"utf8").trim(); async function list(url,name){const client=new Client({name,version:"1"}); const transport=new StreamableHTTPClientTransport(new URL(url),{requestInit:{headers:{authorization:`Bearer ${secret}`}}}); await client.connect(transport); const tools=(await client.listTools()).tools; await client.close(); return tools;} const tools=await list(process.env.SIDECAR_URL,"image-fixture"); if (!tools.some((tool)=>tool.name==="get_states")||!tools.some((tool)=>tool.name==="call_service")) process.exit(1); const nativeTools=await list(process.env.SIDECAR_NATIVE_URL,"image-native-fixture"); if (!nativeTools.some((tool)=>tool.name==="HassTurnOn")) process.exit(1);'
 
-echo "V2 Linux boundary fixture passed (${OPENCODE_V2_VERSION})"
+# Reuse the real sidecar/proxy with bundled tools disabled. Old authenticated
+# clients must not retain /mcp access while the native catalogue still loads.
+kill "${SIDECAR_PID}"
+wait "${SIDECAR_PID}" || true
+SIDECAR_PID=""
+start_sidecar false
+wait_for_status 404 "http://127.0.0.1:${PROXY_PORT}/mcp" POST
+wait_for_status 401 "http://127.0.0.1:${PROXY_PORT}/native-mcp" POST
+SIDECAR_SECRET_FILE="${RUNTIME_ROOT}/sidecar-secret" \
+SIDECAR_URL="http://127.0.0.1:${PROXY_PORT}/mcp" \
+SIDECAR_NATIVE_URL="http://127.0.0.1:${PROXY_PORT}/native-mcp" node --input-type=module -e \
+    'import { readFileSync } from "node:fs"; import { Client } from "/opt/ha-mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js"; import { StreamableHTTPClientTransport } from "/opt/ha-mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js"; const headers={authorization:`Bearer ${readFileSync(process.env.SIDECAR_SECRET_FILE,"utf8").trim()}`}; if ((await fetch(process.env.SIDECAR_URL,{method:"POST",headers})).status!==404) throw new Error("Disabled bundled route remained accessible"); const client=new Client({name:"image-native-only-fixture",version:"1"}); await client.connect(new StreamableHTTPClientTransport(new URL(process.env.SIDECAR_NATIVE_URL),{requestInit:{headers}})); if (!(await client.listTools()).tools.some(({name})=>name==="HassTurnOn")) throw new Error("Native-only catalogue missing"); await client.close();'
+
+echo "V2 Linux boundary fixture passed (${OPENCODE_V2_VERSION}, including native-only sidecar)"

@@ -70,8 +70,12 @@ if [ -f "${SIDECAR_SECRET_FILE}" ]; then
     fi
 
     SIDECAR_READY=false
+    SIDECAR_HEALTH_PATH=mcp
+    if [ "$(cat "${V2_RUNTIME_ROOT}/mcp-enabled" 2>/dev/null || true)" != "true" ]; then
+        SIDECAR_HEALTH_PATH=native-mcp
+    fi
     for _attempt in $(seq 1 100); do
-        if [ "$(curl -sS -o /dev/null --connect-timeout 1 --max-time 2 -X POST -w '%{http_code}' http://127.0.0.1:8765/mcp 2>/dev/null || true)" = "401" ]; then
+        if [ "$(curl -sS -o /dev/null --connect-timeout 1 --max-time 2 -X POST -w '%{http_code}' "http://127.0.0.1:8765/${SIDECAR_HEALTH_PATH}" 2>/dev/null || true)" = "401" ]; then
             SIDECAR_READY=true
             break
         fi

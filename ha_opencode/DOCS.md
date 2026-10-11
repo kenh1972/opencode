@@ -5,16 +5,23 @@ terminal or OpenChamber web workspace with one shared, app-managed backend.
 
 ## Upgrading to 3.2
 
-Stable **3.2.1** promotes the fixes qualified in beta **3.2.1b2**, with OpenCode
+Stable **3.2.2** promotes beta **3.2.2b1**, with OpenCode
 **2.0.26**, OpenChamber **2.2.0** and hab **1.7.2**. Update through Home Assistant Supervisor.
 The first startup validates a private copy of existing V2 state before activation,
 preserving stable conversations, provider sign-ins and session permissions.
 Stable and beta retain separate app storage; beta sessions are not transferred.
 
-This release includes the Ingress prompt-body fix, migration recovery and dependency
-remediation. Four installed npm trees have zero findings; OpenChamber retains one
-explicitly integrity-checked, vendor-mitigated `braces` advisory. These audits do
-not cover OS packages or code embedded in browser bundles.
+This release adds independent native MCP, one-time Assist-to-HA-configured startup
+migration, persistent terminal preferences, opt-in YAML formatting and default-off
+third-party plugins. Review [native migration and rollback](#upgrade-policy-assist-to-ha-configured-mcp)
+before updating: `/api/mcp` follows HA's selected APIs and can expose a broader catalogue.
+Disabled connections and custom API choices are retained. HA's own MCP settings
+are not changed. Installed Supervisor fresh-install, upgrade and rollback acceptance
+remains unverified for 3.2.2; automated/native-image tests are separate evidence.
+
+Previous 3.2.1 installed dependency qualification reported four npm trees with zero
+findings and one explicitly vendor-mitigated OpenChamber `braces` advisory. Audits
+do not cover OS packages or code embedded in browser bundles.
 
 ### Experimental native Assist and AI data tasks
 
@@ -216,16 +223,32 @@ switches and closed views cancel outstanding work, and stale results are ignored
 The editor reports unavailable language assistance rather than treating an LSP
 outage as a clean document. This assistance does not save files or reload HA;
 normal editor save controls and approval policies remain separate. LAN editor
-access is not enabled by this integration.
+access is not enabled by this integration. Rendered live-HA completion and
+diagnostic refresh passed on amd64; disabled-worker, ARM and HAOS qualification
+remain part of the beta readiness plan.
 The editor transport requires browser `Sec-Fetch-Site: same-origin` metadata to
 validate requests across Ingress's TLS-terminating proxies. Use HTTPS (or a
 localhost browser origin); browsers that omit this metadata, commonly on plain
 HTTP LAN origins, receive an unavailable result rather than weakening the origin
 check. Agent `ha_yaml_*` tools do not have this browser restriction.
 
-Approved native `.yaml`/`.yml` writes use pinned Prettier and honor the file's
-`.prettierrc` preferences. Formatting does not reload Home Assistant or replace
-configuration validation. The read-only agent denies edits and LSP dispatch.
+Native `.yaml`/`.yml` edits preserve unrelated formatting by default. Enable
+`yaml_formatting` to run pinned Prettier after edits, honoring `.prettierrc`.
+An explicit `"formatter": false` in `opencode_config` disables every formatter;
+explicit `"formatter": true` opts into YAML formatting as well and overrides
+the add-on setting. Existing explicit preferences are retained on upgrades.
+The targeted setting leaves other formatters and YAML diagnostics available.
+Formatting does not reload Home Assistant or replace configuration validation.
+The read-only agent denies edits and LSP dispatch.
+
+### Terminal preferences
+
+TUI Settings, favourites and recent-model/client state are stored privately in
+this app's `/data/opencode-tui` and survive restarts and image updates. Stable
+and beta have separate `/data` mounts. Existing ephemeral preferences are copied
+when still available; files already lost by an earlier container replacement
+cannot be recovered. The managed server configuration remains root-owned.
+Persistent CLI preferences cannot enable custom TUI plugins.
 
 ## Desktop Browser Tools versus HA Screenshots
 
@@ -414,86 +437,173 @@ OpenCode's own bundled `homeassistant` MCP supplies configuration, validation, d
 
 ### Which URL in HA's AI settings?
 
-**The native bridge defaults to Assist, not the first “Your MCP API” URL.** The add-on builds the URL and authenticates through Supervisor, so you do not need to paste a URL or supply an access token.
+**New installations use “Your MCP API” (`/api/mcp`) by default.** Startup persists and verifies native settings before activation. Upgrades retain effective enabled/disabled state, with the one-time selection migration below. The add-on builds the URL and authenticates through Supervisor; no URL or access token needs to be pasted.
 
 | Entry in HA's MCP card | Endpoint | How it relates to this app |
 | --- | --- | --- |
-| **Your MCP API** | `/api/mcp` | Combines the LLM APIs selected in HA's MCP Server configuration. Leave **Native MCP API ID** empty to use it. |
-| **Assist** | `/api/mcp/assist` | The native bridge's default, with **Native MCP API ID** set to `assist`; focused home-control and context tools. |
+| **Your MCP API** | `/api/mcp` | Combines HA's selected LLM APIs. Choose `home_assistant` under **Native tool selection** (new-install default). |
+| **Assist** | `/api/mcp/assist` | Choose `assist` for focused home-control and context tools; explicit choices are retained. |
 | **Home Assistant Read-Only** (when enabled and connected) | `/api/mcp/mcp-<app-slug>` | This app's read-only tools made available through HA. Created by **Expose read-only MCP to Home Assistant**, the opposite-direction connection; not the native bridge's default target. |
 
-On new HA 2026.10 MCP Server setups, **Your MCP API** exposes all registered LLM APIs by default, including APIs added later; older setups retain their selections. It can include the app's read-only API as well. A larger catalogue can mean more tools and overlap with the bundled MCP, but does not automatically grant unrestricted HA administration. Keep `assist` for focused home control, or deliberately leave the API ID empty to use HA's combined selection. Save and restart the add-on after changing the bridge settings. See [Expose Read-Only MCP to Home Assistant](#expose-read-only-mcp-to-home-assistant) for the reverse connection.
+On new HA 2026.10 MCP Server setups, **Your MCP API** exposes all registered LLM APIs by default, including APIs added later; older setups retain their selections. It can include the app's read-only API as well. A larger catalogue can mean more tools and overlap, but does not automatically grant unrestricted HA administration. Choose `assist` for focused home control or `home_assistant` for HA's combined selection. Save and restart after changes. See [Expose Read-Only MCP to Home Assistant](#expose-read-only-mcp-to-home-assistant) for the reverse connection.
 
 Home Assistant has a native `llm` integration and native MCP endpoints for registered LLM APIs. PR [home-assistant/developers.home-assistant#3236](https://github.com/home-assistant/developers.home-assistant/pull/3236) documents the contract: every registered LLM API is exposed at `/api/mcp/<API ID>` once Home Assistant's MCP Server integration is set up. The built-in Assist API uses the API ID `assist`.
 
 **Which Home Assistant version you need:** the `llm` integration, the per-domain LLM tool platforms, and the keyed `/api/mcp/<API ID>` endpoints all first ship in **Home Assistant 2026.8**. On 2026.7.x and earlier, Home Assistant serves only the configured `/api/mcp` endpoint and the legacy `/mcp_server/sse` transport. In every case the **MCP Server** integration must be added in Home Assistant first — the endpoints are not served otherwise.
 
-When **Native Home Assistant MCP bridge (beta)** is on, the add-on adds a second OpenCode MCP server named `homeassistant_native` that forwards requests to the configured Home Assistant Core native endpoint through the Supervisor proxy. In V2, this uses a second authenticated sidecar route, keeping the Supervisor token out of inherited V2 environment, managed config, logs, and model context. The normal V2 server and allowed shell commands run as container root, so shell is trusted code and not an OS isolation boundary against root-owned runtime files. **Native MCP API ID** defaults to `assist`, which targets `/api/mcp/assist`. Set it to a custom API ID to test `/api/mcp/<your API ID>` for custom APIs registered inside Home Assistant. Leave it empty to target Home Assistant's configured `/api/mcp` endpoint instead.
+When **Home Assistant native tools (beta)** is on, the add-on registers `homeassistant_native` independently of bundled tools and external MCP servers. An authenticated sidecar forwards to Core through Supervisor, keeping the Supervisor token out of inherited V2 environment, managed config, logs and model context. The normal V2 server and allowed shell commands run as container root, so shell remains trusted code, not an OS isolation boundary. Choose `custom` and enter **Custom native API ID** to select `/api/mcp/<ID>`; this field is ignored for other selections. Disabled bundled routes reject stale clients too. HAB remains available through `homeassistant_hab_run` only when bundled tools are on with the Full profile.
 
 ### What you have to do
 
-The bridge is **off by default**, and Home Assistant does not serve its MCP endpoints until you set the integration up. Two one-time steps, in this order:
+Native tools are **on for new installations**, but Home Assistant does not serve MCP until you enable its server. Upgrades do not automatically turn on a previously disabled connection:
 
 1. **Enable Home Assistant's built-in MCP Server.** On **HA 2026.10+**, go to **Settings → System → AI** and enable **Model Context Protocol**. If it is already enabled, do not add it again. On older versions, use **Settings → Devices & Services → Add Integration → Model Context Protocol Server**. Until the integration is set up, the bridge has nothing to talk to.
-2. **Turn on the bridge in the add-on and restart it.** Enable **Native Home Assistant MCP bridge (beta)** (`native_ha_mcp_enabled`) in the add-on's Configuration tab. Keep **Native MCP API ID** (`native_ha_mcp_api_id`) at `assist` for the default Assist URL, or leave it empty for **Your MCP API**, then restart the add-on. The settings are read at start-up.
+2. **Review the add-on settings and restart it.** Enable **Home Assistant native tools (beta)** (`native_ha_mcp_enabled`) if previously off. Choose `home_assistant`, `assist`, or `custom` under **Native tool selection** (`native_ha_mcp_selection`). Custom uses `native_ha_mcp_api_id`. Settings take effect at startup; native-only operation does not require bundled tools.
 
-To confirm it worked, ask OpenCode to run `get_agent_capabilities`: it reports the detected Home Assistant version, bridge status, which endpoint resolved, and any upstream limitations that still apply. Use `homeassistant_native` only when the bridge status is `enabled_and_reachable`; a reachable endpoint with a disabled bridge is not exposed to OpenCode. Initialization is not proof of catalog loading or execution; verify an appropriate read-only native tool next. In OpenCode you should see `homeassistant_native` alongside `homeassistant`.
+When bundled tools are enabled, `get_agent_capabilities` reports the detected HA version, native enablement, endpoint initialization probes and upstream limitations. With bundled tools disabled, check `homeassistant_native` in OpenCode's `/mcps` view instead. Initialization/connection alone does not prove catalogue loading or execution: verify an appropriate read-only native tool next. Native-only installations do not show `homeassistant`; this is intentional.
 
-On **HA 2026.9+**, the capability tool and `ha://agent/capabilities` also query
-the admin-only `llm/api/list` WebSocket command through Supervisor. This reads the
-current registry independently of whether the bridge is enabled.
+### Upgrade policy: Assist to HA-configured MCP
+
+Startup identifies fresh versus legacy data before rewriting version markers,
+journals the migration privately in `/data/.native-mcp-state.json`, saves settings
+through Supervisor and verifies readback. Native settings intentionally have no
+manifest defaults because Supervisor merges defaults into saved options. A fresh
+installation resolves to enabled/`home_assistant`; unknown pre-existing data is
+treated conservatively as legacy. Stable and beta have separate `/data` volumes.
+
+The upgrade makes a **one-time** change for existing installations using the
+old Assist selection (including the implicit default). It targets
+**Your MCP API**, `/api/mcp` (without a trailing slash), reached through
+`http://supervisor/core/api/mcp`. Custom API selections are not replaced.
+Migration uses the effective selection after legacy endpoint overrides: a
+custom override is preserved, while an Assist override is migrated even if a
+different, unused API ID is stored in the options.
+
+| Existing native setting | Migration result |
+| --- | --- |
+| API ID `assist`, or old implicit Assist default | HA-configured `/api/mcp`; native enabled/disabled state retained |
+| Empty API ID, already following HA configuration | Stays on `/api/mcp`; enabled/disabled state retained |
+| Custom API ID | Keeps the custom ID and existing endpoint/fallback policy; enabled/disabled state retained |
+| Native disabled, including effective native-off because bundled MCP was disabled | Remains off; a legacy Assist selection is updated without enabling the connection |
+| Explicit Assist/custom selection made after migration | Preserved on later restarts and updates; migration is not repeated |
+
+**Scope implication:** `/api/mcp` follows the APIs selected in Home Assistant's
+MCP Server configuration. It is not guaranteed to contain Assist and can expose
+more or different tools than the old Assist-only endpoint. When **Expose all LLM
+APIs** is enabled, APIs registered later can also appear. Review that selection
+in HA before upgrading if you require a narrowly scoped catalogue. The upgrade
+does not enable HA's MCP Server, change its selected APIs or **Require admin**
+setting, enable reverse sharing, or automatically turn on a disabled native
+connection. See the [official Home Assistant MCP Server documentation](https://www.home-assistant.io/integrations/mcp_server/)
+for HA-side API selection and access settings.
+
+You can deliberately select **Assist** again using **Native tool
+selection** and restart the app; that explicit choice will be retained. The
+custom API ID field is used only with **Custom**. A preserved legacy custom API
+may retain its pre-existing fallback to `/api/mcp` on HA versions without keyed
+endpoints; this upgrade does not introduce a new fallback or replace its saved
+custom selection. Newly selected specific APIs use strict keyed endpoints.
+
+Startup reports the verified Assist-to-configured change once. Persisted
+selection becomes authoritative so consumed legacy endpoint overrides cannot
+undo it on restart; `HA_NATIVE_MCP_ENDPOINT_MODE` is reserved from custom
+`env_vars`. Custom compatibility is retained in the journal and retired when
+the selection changes. No HA-side API configuration is modified.
+
+If the journal, Supervisor save or readback fails, **native stays off for that
+boot**, with a warning; ordinary bundled tools remain available. Interrupted
+saves resume on restart. Observable concurrent edits are detected, but Supervisor
+does not offer atomic compare-and-swap. An interrupted migration with conflicting
+native edits requires review rather than overwriting the edit. Keep the private
+journal with your app backup; do not delete it as routine troubleshooting.
+
+**Rollback:** back up stable app data/options before upgrading. For an older stable release,
+restore that backup: older manifests do not understand `native_ha_mcp_selection`.
+Do not copy journals between channels or claim a downgrade preserves the new
+settings automatically. Installed Supervisor upgrade acceptance remains a
+separate qualification step; automated fixtures are not a live HA upgrade test.
+
+### Finding and checking API IDs
+
+On **HA 2026.9+**, the capability tool and `ha://agent/capabilities` resource also
+query the admin-only `llm/api/list` WebSocket command through Supervisor. Each
+check reads the current registry; no credentials or additional access token are
+needed. The query works independently of whether the native bridge is enabled.
 
 | Report field under `home_assistant.native_mcp` | Meaning |
 | --- | --- |
-| `api_discovery.apis` | Registered API IDs and display names, not a list of tested MCP endpoints |
-| `api_discovery.status` | Discovery availability; an unavailable list does not mean an API is missing |
-| `selected_api.status` | Whether the saved API ID is registered, unknown, unchecked, or using the configured endpoint |
+| `api_discovery.apis` | Registered API IDs and display names in HA registration order; not a list of successfully tested MCP endpoints |
+| `api_discovery.status` | `available`, `unsupported`, `unauthorized`, `timeout`, `unavailable`, or `invalid_response`; an unavailable list does not mean an API is missing |
+| `selected_api.status` | `registered`, `unknown_api`, `not_checked`, or `configured_endpoint` when the saved API ID is empty |
 | `configured_endpoint_status` | Separate initialization probe of the saved endpoint |
 
-For `unknown_api`, choose a returned ID in **Native Home Assistant MCP API ID**,
-save and restart. Discovery does not change that option automatically.
+For an `unknown_api`, select `custom` and enter a returned ID in **Custom native API ID**,
+save, and restart the app. Discovery never changes that option automatically.
+On older HA releases or when `llm` is not loaded, discovery reports its limitation
+while the existing endpoint probes remain available. Prefer `assist` for ordinary
+home control; select custom APIs deliberately.
 
 Nothing else is required. You do **not** need to change the API ID, set any environment variable, or supply an access token — the bridge authenticates with the Supervisor token. If you skip step 1, the bridge starts and every request fails with a 404, which `get_agent_capabilities` will report.
 
-Once it is on, the bridge handles Home Assistant versions by itself and needs no further attention when you upgrade — including across the 2026.8 boundary, which it picks up without a restart.
+The configured selection follows HA's MCP configuration. Preserved legacy custom selections with fallback retry keyed endpoints periodically; newly selected Assist/custom APIs require HA 2026.8+ keyed support.
 
 Access model from Home Assistant Core: `/api/mcp` serves the selected LLM APIs,
 or every registered API when **Expose all LLM APIs** is enabled. Admin access
 depends on **Require admin**. New HA 2026.10 MCP Server entries default to all
-APIs and admin-only access; existing entries retain their settings.
-`/api/mcp/<API ID>` serves one registered API and requires admin except for `assist`.
-The configured endpoint's selection does not restrict keyed endpoints. Adding
-another API can broaden the configured endpoint when all-APIs mode is enabled.
+APIs and admin-only access; existing entries retain their selection and access
+setting. `/api/mcp/<API ID>` serves one registered API and requires admin except
+for `assist`. **The configured endpoint's selection does not restrict keyed
+endpoints.** Adding another API later can broaden the configured endpoint when
+the all-APIs option is enabled.
 
 That admin requirement is not a wall for this add-on. The Supervisor calls Home Assistant Core as its own system user, which Home Assistant creates in the admin group, so **any registered API ID is reachable from here** — which is what makes testing a custom LLM API from your own integration practical. If the bridge reports an unknown API ID, the ID does not exist; it is not an access failure.
 
 The bridge adapts itself to what your Home Assistant actually serves:
 
-- **Endpoint fallback.** If the keyed `/api/mcp/<API ID>` endpoint is not served — which is the case before 2026.8 — the bridge falls back to the configured `/api/mcp` endpoint and logs the reason once. It retries the keyed endpoint periodically, so upgrading Home Assistant to 2026.8 under a running add-on is picked up without a restart. If Home Assistant instead reports that the API ID is unknown, the bridge surfaces that error rather than silently serving a different API. Set `HA_NATIVE_MCP_ENDPOINT_MODE` to `keyed` or `configured` in **Environment variables** to pin one endpoint instead.
-- **Tool schema repair.** Before Home Assistant 2026.8, `GetLiveContext` used a schema that strict MCP clients could not compile ([home-assistant/core#176762](https://github.com/home-assistant/core/issues/176762), fixed by [#176814](https://github.com/home-assistant/core/pull/176814)). The bridge repairs that legacy unprefixed tool only. Modern and custom schemas, required parameters and unconstrained unions pass through unchanged. Set `HA_NATIVE_MCP_SANITIZE_SCHEMAS` to `0` to disable the repair.
+- **Endpoint policy.** `home_assistant` uses only `/api/mcp`. Newly selected Assist/custom APIs use only their keyed endpoint and never fall back to a broader catalogue. A preserved legacy custom API can retain its old fallback when keyed endpoints are not served, logging the reason and periodically retrying the keyed endpoint. Unknown API errors are surfaced, not replaced. Use **Native tool selection**, not a new endpoint-mode environment override.
+- **Tool schema repair.** Before Home Assistant 2026.8, `GetLiveContext` used a schema that strict MCP clients could not compile, leading to `extra keys not allowed @ data['__unparsedToolInput']` ([home-assistant/core#176762](https://github.com/home-assistant/core/issues/176762), fixed by [#176814](https://github.com/home-assistant/core/pull/176814)). The bridge repairs that legacy unprefixed tool only. Modern and custom schemas, including required parameters and intentionally unconstrained unions, pass through unchanged. Set `HA_NATIVE_MCP_SANITIZE_SCHEMAS` to `0` to disable the repair.
 - **Malformed-message guard.** Every message is validated as JSON-RPC 2.0 before it is forwarded, because malformed POSTs to `/api/mcp` have been reported to crash Home Assistant Core ([home-assistant/core#176734](https://github.com/home-assistant/core/issues/176734)). This one is **not fixed in 2026.8** — the upstream fix is still open — so the guard applies on every version.
 
 Run `get_agent_capabilities` to see what the running instance supports; it reports the detected version, the endpoint status, and any known upstream limitations that apply to it. OpenCode's regular `homeassistant` MCP server remains the supported tool surface either way.
 
 The two MCP servers are intentionally separate:
 
-- `homeassistant_native`: Home Assistant's native LLM API tools from `/api/mcp/assist` by default, another `/api/mcp/<API ID>` when selected, or the combined `/api/mcp` endpoint when the API ID is empty.
+- `homeassistant_native`: Home Assistant's selected LLM API tools from `/api/mcp` by default on new installations, or a specific keyed Assist/custom endpoint when explicitly selected.
 - `homeassistant`: OpenCode's add-on tools for configuration editing, validation, diagnostics, screenshots, updates, ESPHome, Zigbee, add-on development, and documentation lookup.
+
+A native tool rejection must not trigger an automatic retry through the broader
+administrative service tools. Native tool names are discovered from HA (for
+example `homeassistant__GetLiveContext`), rather than assumed from older prompts.
 
 ### Native prompts and current context
 
-Once the native catalog has loaded, select HA's prompt in OpenCode (the built-in
-API appears as `/homeassistant_native:Assist`) or request current home context
-through its advertised native tool. HA 2026.10 uses `homeassistant__GetLiveContext`;
-OpenCode adds the server prefix. Resource-capable clients can read
-`homeassistant://assist/context-snapshot` when HA lists it; in this runtime, use
-the native context tool for model-driven reads.
+Once `homeassistant_native` has connected and its catalog has loaded, use HA's
+own prompt or request current context through the native tools:
 
-The bridge preserves HA's instructions, tool metadata, required arguments and errors.
-Prompts/context are fetched on demand, not cached at connection time. Refresh context
-for current-state questions. Annotations do not grant permissions: the read-only
-agent still denies native tools. Report native rejection rather than retrying
+| Surface | How to use it |
+| --- | --- |
+| Selected API prompt | Select its command in OpenCode; the built-in API appears as `/homeassistant_native:Assist`. Custom/combined API names come from HA and may be normalized by OpenCode. |
+| Current home context | Ask OpenCode to use the native context tool advertised by the selected API. HA 2026.10 Assist uses `homeassistant__GetLiveContext`; OpenCode adds its server prefix. |
+| Assist snapshot resource | Resource-capable clients can read `homeassistant://assist/context-snapshot` when HA lists it. APIs without the live-context tool do not expose it. In the pinned runtime, use the native context tool for model-driven reads. |
+
+The bridge adds concise usage guidance at initialization and preserves HA's
+instructions. It does not fetch or cache prompts, entity lists or snapshots at
+connection time. Prompt retrieval and context reads remain on demand; refresh
+context for a new current-state question. Content already included in a session
+is a snapshot, not a live subscription.
+
+Tool titles, annotations, required arguments and `isError` results are retained.
+Annotations do not grant permissions: the app's read-only agent continues to deny
+native tools. The bridge preserves supplied request metadata but does not invent
+a room/device identity. Native errors should be reported rather than retried
 through broader administrative tools.
+
+Local qualification uses the pinned OpenCode `2.0.26` process, the app's MCP
+registration/forwarding code, and controlled HA/provider fixtures. It covers
+prompt consumption, resource discovery, fresh native context calls, required
+argument validation and read-only policy. Resource reads/cancellation also have
+bridge-level tests. Live HA `2026.10.0b0`, UI resource-reader behavior and native
+image acceptance remain release checks.
 
 ## Runtime and Interface
 
@@ -770,8 +880,10 @@ Supported native root fields are `$schema`, `model`, `default_agent`,
 `providers`, boolean `formatter`, `compaction`, `media`, `tool_output` and `websearch`.
 Nested settings are checked against the pinned native V2 schema. Unsupported
 fields and invalid values stop V2 activation for that boot, preserving the saved
-options for correction. Managed permissions, agents, plugins, snapshots, LSP,
-runtime selection and integration policy cannot be overridden here.
+options for correction. Direct permissions, agents, snapshots, LSP, runtime
+selection and integration policy overrides are unsupported here. Native `plugins`
+entries are accepted only when **Enable third-party plugins** is on; otherwise
+they are ignored without changing the saved options. See [Third-party plugins](#third-party-plugins-beta).
 
 Supported legacy `provider` entries are converted in memory at startup, without
 rewriting saved options: `npm: "@ai-sdk/openai-compatible"` uses the built-in V2
@@ -780,7 +892,7 @@ separated), and `api` becomes `settings.baseURL`. Model `id`, `tool_call`,
 `modalities`, token limits, cache pricing and variant maps are retained in their
 V2 forms. Built-in provider overlays may omit `npm`. Other legacy packages or
 unsupported model fields require explicit native conversion; no arbitrary npm
-code is loaded. Keep each entry entirely legacy or native, and do not define the
+provider code is loaded. Keep each entry entirely legacy or native, and do not define the
 same provider in both maps. The converted result must pass all native schema,
 credential and managed-policy checks.
 
@@ -819,6 +931,74 @@ reserved. Other variables retain separate shell/service handling and generate
 a warning; cloud credential chains and general environment parity remain under
 development. Ordinary provider keys are not isolated from backend subprocesses.
 Do not paste keys into chat. Native `/connect` account setup remains available.
+
+### Third-party plugins (Beta)
+
+**Enable third-party plugins** (`custom_plugins_enabled`) is **off by default**.
+This is a thin opt-in to [upstream OpenCode V2 plugin loading](https://opencode.ai/v2/docs/plugins),
+not an add-on plugin manager or a promise of compatibility with any particular
+plugin, including Magic Context. The add-on does not curate packages, install
+plugins itself, or implement an updater.
+
+Enable the option, add native V2 `plugins` entries to **Custom OpenCode
+configuration**, save and **restart the app**. Merge this into your existing
+JSON rather than replacing unrelated settings:
+
+```json
+{
+  "plugins": [
+    "opencode-example-plugin@1.2.0",
+    {
+      "package": "/data/plugins/my-plugin",
+      "options": { "enabled": true }
+    }
+  ]
+}
+```
+
+The package and local path above are illustrative; choose a real V2-compatible
+plugin and follow its documentation. Native string/object entries, package
+specifications, options and enable/disable selectors pass through to upstream
+after the bundled entries. Upstream's loader owns installation, caching,
+version checks, reloads and errors. Exact versions/commit pins are recommended;
+unpinned versions follow the bundled upstream runtime's behavior. Changing the
+saved package specification and restarting is the durable way to select a new
+version. The add-on does not update or pin it for you, and an app upgrade can
+change upstream compatibility or loader behavior.
+
+**Configuration and persistence:** saved add-on options survive restarts and
+updates and regenerate `/run/opencode-v2/managed.json` at every start. Edits to
+generated `/run` configuration are not durable; do not rely on an upstream CLI
+installer/setup wizard changing another config file to register your plugin.
+Project config/discovery restrictions remain unchanged: placing a plugin under
+`/homeassistant/.opencode/plugins` does not enable it. Configure local plugins by
+absolute paths under a persistent directory such as `/data/plugins/my-plugin`;
+relative paths resolve from the generated configuration, not `/homeassistant`.
+The backend's XDG cache root is persistent `/data/v2/cache`; upstream owns the
+package-cache layout. This cache is excluded from backups and can be rebuilt. Plugin-specific configuration
+and data must use persistent paths supported by that plugin. The server's HOME
+and config directory are under temporary `/run`; do not assume a plugin's
+default settings or memory files there will survive. No plugin-specific storage
+migration or recovery is provided. Client/TUI-only plugin configuration is
+separate and is not enabled by this backend option.
+
+**Trust and support:** third-party plugins execute as **root-level code inside
+the backend**, not as sandboxed AI tools. Tool permissions, sensitive-file read
+restrictions and the read-only agent do not constrain direct plugin code. A
+plugin can read files/credentials, access the network, retain or transmit home
+data, change behavior or policy, and interfere with bundled context/MCP/LSP
+plugins. Upstream selectors can also disable bundled entries. Background model
+calls may add costs. Only enable code you trust; plugin-specific compatibility,
+privacy, updates and behavior are your responsibility. Generic plugin loading
+does not mean any particular third-party plugin has been tested by this add-on.
+
+**Recovery:** turn **Enable third-party plugins** off in the Home Assistant app
+options, save and restart. Saved `plugins` entries are ignored before their
+validation/loading, even if an entry is malformed, and are not deleted. Bundled
+plugin entries are generated normally. This bypasses custom loading, but cannot
+undo files, data or other changes a plugin already made. Invalid JSON or unrelated
+invalid configuration still needs correction. Reproduce add-on issues with this
+option off before reporting them; report plugin-specific failures upstream.
 
 ### Lemonade Server (local models)
 
@@ -867,7 +1047,8 @@ to avoid truncating tools and instructions (see [MCP Tool Profiles](#mcp-tool-pr
 ### External MCP servers
 
 Use **External MCP configuration** for additional MCP servers. This is separate
-from `opencode_config` so managed plugins and permissions remain locked. The
+from `opencode_config` so MCP registration and tool permissions remain explicitly
+configured; it does not enable third-party plugins. The
 option accepts a JSON object with `servers` and optional ordered `permissions`.
 External tools default to `ask`; later permission entries override that default.
 
@@ -940,11 +1121,13 @@ and `homeassistant_native` are reserved. Remote URLs cannot contain credentials.
 HTTPS is required unless `"allow_insecure": true` explicitly accepts plaintext
 HTTP on a trusted private path; compatible legacy HTTP entries receive that flag
 during migration. At most 16 servers and 512 permission entries are
-accepted. Disable **Home Assistant MCP integration** only after removing every
-external server; the same credential-isolated plugin owns both registrations. A
+accepted. External servers can remain enabled when **Home Assistant MCP
+integration** is disabled; external-only registration does not acquire the Home
+Assistant sidecar credential. The same plugin owns these independent registrations. A
 runtime error in an external definition, secret or executable is reported in the
 log and skips the external registrations without removing the bundled Home
-Assistant MCP servers.
+Assistant MCP servers. A Home Assistant credential failure likewise does not
+remove successfully registered external servers.
 
 ### Web search selection
 

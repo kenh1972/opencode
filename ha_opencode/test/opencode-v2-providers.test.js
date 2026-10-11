@@ -95,7 +95,7 @@ describe("bounded native V2 provider configuration", () => {
     for (const raw of ['{"provider":{"__proto__":{}}}', '{"provider":{"fixture":{"options":{"constructor":{}}}}}']) {
       assert.throws(() => prepareUserConfig({ opencode_config: raw }), /unsafe object key/);
     }
-    for (const policy of [{ plugins: ["-homeassistant.runtime-guard"] }, { agents: {} }, { permissions: [] }]) {
+    for (const policy of [{ agents: {} }, { permissions: [] }]) {
       assert.throws(() => prepareUserConfig(options({ provider: { fixture: {} }, ...policy })), /unsupported fields/);
     }
   });
@@ -166,7 +166,6 @@ describe("bounded native V2 provider configuration", () => {
     ["malformed nested model", { providers: { fixture: { models: { coding: { limit: { output: "100" } } } } } }],
     ["malformed native control", { providers: { fixture: { settings: { timeout: "fast" } } } }],
     ["unknown nested model field", { providers: { fixture: { models: { coding: { invented: fixtureKey } } } } }],
-    ["plugin disable", { plugins: ["-homeassistant.runtime-guard"] }],
     ["permission bypass", { permissions: [{ action: "*", resource: "*", effect: "allow" }] }],
     ["read-only agent override", { agents: { [READ_ONLY_AGENT_ID]: { permissions: [] } } }],
     ["runtime update", { update: "auto" }],
@@ -253,7 +252,7 @@ describe("bounded native V2 provider configuration", () => {
       assert.ok(!(result.stdout + result.stderr).includes(fixtureKey));
       assert.deepEqual(JSON.parse(await readFile(input, "utf8")), raw);
 
-      await writeFile(input, JSON.stringify(options({ plugins: [fixtureKey] })));
+      await writeFile(input, JSON.stringify(options({ plugins: [{ package: 123, options: { key: fixtureKey } }] }, { custom_plugins_enabled: true })));
       const rejected = run();
       assert.equal(rejected.status, 1);
       assert.equal(rejected.stdout, "");
@@ -265,6 +264,15 @@ describe("bounded native V2 provider configuration", () => {
       await writeFile(input, "{}");
       assert.equal(run().status, 0);
       assert.equal((await readFile(output)).length, 0);
+      for (const explicit of [true, false]) {
+        await writeFile(input, JSON.stringify(options({ formatter: explicit })));
+        const formatted = spawnSync(process.execPath, [generator, "--options-file", input,
+          "--environment-output", output, "--yaml-formatting", String(!explicit)], { encoding: "utf8" });
+        assert.equal(formatted.status, 0, formatted.stderr);
+        const value = JSON.parse(formatted.stdout).formatter;
+        if (explicit) assert.equal(value["ha-yaml"].disabled, false);
+        else assert.equal(value, false);
+      }
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

@@ -71,10 +71,12 @@ describe("bounded external MCP configuration", () => {
     const plugin = managed.plugins.find(({ package: name }) => name === DEFAULT_PLUGIN_PACKAGE);
     assert.deepEqual(plugin.options.externalServers, external.servers);
     assert.deepEqual(managed.permissions.slice(-external.permissions.length), external.permissions);
-    assert.throws(
-      () => applyExternalMcpConfig(buildManagedConfig(), external),
-      /requires the Home Assistant MCP integration/,
-    );
+    const externalOnly = applyExternalMcpConfig(buildManagedConfig(), external);
+    const externalPlugin = externalOnly.plugins.find(({ package: name }) => name === DEFAULT_PLUGIN_PACKAGE);
+    assert.deepEqual(externalPlugin.options, {
+      bundledEnabled: false, nativeEnabled: false, externalServers: external.servers,
+    });
+    assert.deepEqual(externalOnly.permissions.slice(-external.permissions.length), external.permissions);
   });
 
   it("resolves secret files only when the plugin activates", async () => {
@@ -218,6 +220,43 @@ describe("bounded external MCP configuration", () => {
     } finally {
       console.error = originalError;
     }
+  });
+
+  it("registers external-only servers without requiring a HA endpoint or acquiring a sidecar secret", async () => {
+    const prepared = prepareExternalMcpConfig({ external_mcp_config: JSON.stringify(fixture()) });
+    const registered = new Map();
+    let disposed = false;
+    const cleanup = await createSetup({
+      readSecret() { assert.fail("external-only must not acquire HA credentials"); },
+      resolveExternal: async () => ({ metrics: { type: "local", command: ["fixture"] } }),
+    })({
+      options: { bundledEnabled: false, nativeEnabled: false, externalServers: prepared.servers },
+      mcp: { async transform(callback) { callback(registered); return { async dispose() { disposed = true; } }; } },
+    });
+    assert.deepEqual([...registered.keys()], ["metrics"]);
+    await cleanup();
+    assert.equal(disposed, true);
+  });
+
+  it("keeps external registration when the HA caller credential is unavailable", async () => {
+    const registered = new Map();
+    const messages = [];
+    const originalError = console.error;
+    console.error = (...items) => messages.push(items.join(" "));
+    try {
+      const cleanup = await createSetup({
+        readSecret() { throw new Error("synthetic-secret-detail"); },
+        resolveExternal: async () => ({ metrics: { type: "local", command: ["fixture"] } }),
+      })({
+        options: { endpoint: "http://127.0.0.1:8765/mcp", nativeEnabled: true, externalServers: fixture().servers },
+        mcp: { async transform(callback) { callback(registered); return { async dispose() {} }; } },
+      });
+      assert.deepEqual([...registered.keys()], ["metrics"]);
+      assert.equal(messages.length, 1);
+      assert.match(messages[0], /Home Assistant MCP registration failed/);
+      assert.doesNotMatch(messages[0], /synthetic-secret-detail/);
+      await cleanup();
+    } finally { console.error = originalError; }
   });
 
   it("imports compatible V1 mcp and permission fields on first V2 startup", () => {

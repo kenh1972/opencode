@@ -8,7 +8,7 @@ import { extractLegacyExternalMcpConfig, prepareExternalMcpConfig } from "./exte
 // These are locked dependencies of the pinned plugin package already shipped in
 // the image. The actual V2 decoder validates nested fields, not a V1 facsimile.
 const decodeConfig = Schema.decodeUnknownSync(Config.Info, { onExcessProperty: "error" });
-const ROOT_FIELDS = ["$schema", "model", "default_agent", "providers", "formatter", "compaction", "media", "tool_output", "websearch"];
+const ROOT_FIELDS = ["$schema", "model", "default_agent", "providers", "formatter", "compaction", "media", "tool_output", "websearch", "plugins"];
 const PACKAGES = new Set([
   "openai", "openai/chat", "openai/responses", "openai-compatible",
   "openai-compatible/responses", "anthropic", "anthropic-compatible", "google",
@@ -198,18 +198,28 @@ export function prepareUserConfig(options = {}, { warn = () => {} } = {}) {
     try { config = JSON.parse(raw); } catch { invalid("invalid JSON; correct the saved option and restart (JSONC is not supported here)"); }
   }
   object(config, "root");
+  // Drop before validation so disabling the option also recovers from malformed
+  // plugin entries. The parsed copy is separate from the saved add-on options.
+  if (Object.hasOwn(config, "plugins") && options.custom_plugins_enabled !== true) {
+    delete config.plugins;
+    warn("Custom plugins entries were ignored because custom_plugins_enabled is off; saved options are unchanged.");
+  }
   const legacyExternalMcp = extractLegacyExternalMcpConfig(config);
-  fields(config, [...ROOT_FIELDS, "provider"], "root (managed plugins, permissions, agents, runtime and integration policy cannot be overridden)");
-  jsonValues(config, environment);
+  fields(config, [...ROOT_FIELDS, "provider"], "root (direct permissions, agents, runtime and integration policy overrides are unsupported)");
+  // Opted-in plugins are trusted code. Their options and substitutions belong
+  // to upstream, not the add-on's provider credential/configuration policy.
+  const { plugins: _plugins, ...nonPluginConfig } = config;
+  jsonValues(nonPluginConfig, environment);
   normalizeLegacyProviders(config, warn);
   try { decodeConfig(config); }
   catch { invalid("native V2 schema validation failed; check field names and value types against /v2/docs/config and /v2/docs/providers (use npm/options only inside a supported legacy provider entry)"); }
+  if (config.plugins?.length) warn("Third-party plugins are enabled as trusted root-level backend code; upstream handles loading and compatibility is not verified by the add-on.");
   if (config.$schema !== undefined && config.$schema !== "https://opencode.ai/config.json") invalid("$schema must be https://opencode.ai/config.json");
   if (config.model !== undefined && (typeof config.model !== "string" || !/^[^\s/#]+\/[^\s#]+$/.test(config.model))) invalid("model must be a provider/model string without a variant");
   if (config.default_agent !== undefined && !["build", "plan", "home-assistant-read-only"].includes(config.default_agent)) invalid("default_agent must be build, plan, or home-assistant-read-only");
   if (config.formatter !== undefined && typeof config.formatter !== "boolean") invalid("only boolean formatter overrides are currently supported");
-  // Native WebSearch.ID is an extensible string; this image ships only these
-  // documented providers and does not permit user-loaded provider plugins.
+  // This config field accepts the search providers shipped in the image.
+  // Opting into plugin code does not relax unrelated configuration fields.
   if (config.websearch && !["exa", "firecrawl", "parallel", "tavily", "random"].includes(config.websearch.provider)) {
     invalid("websearch.provider must be exa, firecrawl, parallel, tavily or random; use websearch: false to disable search");
   }

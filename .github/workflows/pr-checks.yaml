@@ -99,6 +99,12 @@ jobs:
       - name: Stable external MCP root boundary
         run: sudo "$(command -v node)" --test ha_opencode/test/opencode-v2-external-mcp.test.js
 
+      - name: Stable native MCP startup persistence root boundary
+        run: sudo "$(command -v node)" --test ha_opencode/test/opencode-v2-mcp-startup.test.js
+
+      - name: Stable durable TUI preference boundary
+        run: sudo "$(command -v node)" --test ha_opencode/test/opencode-v2-tui-state.test.js
+
       - name: Stable native provider credential loader boundary
         run: sudo env HA_NATIVE_TESTS_REQUIRED=1 "$(command -v node)" --test ha_opencode/test/opencode-v2-provider-environment.test.js
 

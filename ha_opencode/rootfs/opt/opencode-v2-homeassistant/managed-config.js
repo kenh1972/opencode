@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { readFileSync, writeFileSync } from "node:fs";
 import { TOOL_PROFILES } from "../ha-mcp-server/lib/tool-profiles.js";
 import { prepareUserConfig } from "./user-config.js";
+import { resolveMcpConfiguration } from "./mcp-config.js";
 
 export const DEFAULT_PLUGIN_PACKAGE = "file:///opt/opencode-v2-homeassistant/mcp-plugin";
 export const DEFAULT_RUNTIME_GUARD_PACKAGE = "file:///opt/opencode-v2-homeassistant/runtime-guard-plugin";
@@ -31,6 +32,12 @@ const WATCHER_IGNORES = Object.freeze([
   "home-assistant_v2.db*",
   "*.log",
 ]);
+
+// Pinned 2.0.26 Prettier/Biome built-in extensions, minus YAML. A project-local
+// formatter must not silently undo the add-on's minimal-diff default.
+const NON_YAML_EXTENSIONS = [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
+  ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", ".json", ".jsonc",
+  ".toml", ".xml", ".md", ".mdx", ".graphql", ".gql"];
 
 const SENSITIVE_READ_PATTERNS = Object.freeze([
   "*secrets.yaml",
@@ -76,7 +83,17 @@ export function buildManagedConfig({
   userHooks = false,
   lspEnabled = false,
   assistEnabled = false,
+  yamlFormatting = false,
+  mcpSettings,
 } = {}) {
+  // Startup can opt into the shared contract only after establishing provenance
+  // and verifying persistence. Existing CLI flags remain unchanged meanwhile.
+  if (mcpSettings !== undefined) {
+    const resolved = resolveMcpConfiguration(mcpSettings);
+    pluginEnabled = resolved.bundled.enabled;
+    nativeMcpEnabled = resolved.native.enabled;
+    mcpProfile = resolved.bundled.profile;
+  }
   const permissions = [
     { action: "read", resource: "*", effect: "allow" },
     { action: "edit", resource: "*", effect: "ask" },
@@ -99,10 +116,11 @@ export function buildManagedConfig({
 
   const plugins = [
     { package: runtimeGuardPackage },
-    ...(pluginEnabled
+    ...(pluginEnabled || nativeMcpEnabled
       ? [{
         package: pluginPackage,
         options: {
+          bundledEnabled: pluginEnabled,
           endpoint: mcpEndpoint,
           nativeEnabled: nativeMcpEnabled,
           nativeEndpoint: nativeMcpEndpoint,
@@ -120,6 +138,7 @@ export function buildManagedConfig({
         `/opt/ha-mcp-server/MCP_PROFILE_${mcpProfile.toUpperCase()}.md`,
       ]
       : []),
+    ...(nativeMcpEnabled ? ["/opt/ha-mcp-server/MCP_NATIVE_INSTRUCTIONS.md"] : []),
     ...(homeBriefing ? ["/data/context/home-briefing.md"] : []),
     ...(decisionNotes ? ["/data/context/decision-notes.md"] : []),
     ...(userHooks ? ["/opt/ha-mcp-server/USER_HOOKS.md"] : []),
@@ -137,7 +156,11 @@ export function buildManagedConfig({
     permissions,
     watcher: { ignore: [...WATCHER_IGNORES] },
     formatter: {
-      "ha-yaml": { command: ["prettier", "--write", "$FILE"], extensions: [".yaml", ".yml"] },
+      ...(!yamlFormatting ? {
+        prettier: { extensions: [...NON_YAML_EXTENSIONS] },
+        biome: { extensions: [...NON_YAML_EXTENSIONS] },
+      } : {}),
+      "ha-yaml": { command: ["prettier", "--write", "$FILE"], extensions: [".yaml", ".yml"], disabled: !yamlFormatting },
     },
     lsp: false,
     skills: ["/data/.config/opencode/skills"],
@@ -161,8 +184,11 @@ export function buildManagedConfig({
 
 export function applyExternalMcpConfig(managed, externalMcp) {
   if (!externalMcp || Object.keys(externalMcp.servers).length === 0) return managed;
-  const plugin = managed.plugins.find(({ package: name }) => name === DEFAULT_PLUGIN_PACKAGE);
-  if (!plugin) throw new TypeError("external_mcp_config requires the Home Assistant MCP integration to be enabled");
+  let plugin = managed.plugins.find(({ package: name }) => name === DEFAULT_PLUGIN_PACKAGE);
+  if (!plugin) {
+    plugin = { package: DEFAULT_PLUGIN_PACKAGE, options: { bundledEnabled: false, nativeEnabled: false } };
+    managed.plugins.push(plugin);
+  }
   plugin.options.externalServers = externalMcp.servers;
   managed.permissions.push(...externalMcp.permissions);
   return managed;
@@ -182,6 +208,8 @@ export function parseArguments(argv) {
     if (value === undefined) throw new TypeError(`${name} requires a value`);
     if (name === "--options-file") {
       options.optionsFile = value;
+    } else if (name === "--mcp-settings-file") {
+      options.mcpSettingsFile = value;
     } else if (name === "--environment-output") {
       options.environmentOutput = value;
     } else if (name === "--external-mcp-output") {
@@ -218,6 +246,8 @@ export function parseArguments(argv) {
       options.userHooks = parseBoolean(value, name);
     } else if (name === "--lsp-enabled") {
       options.lspEnabled = parseBoolean(value, name);
+    } else if (name === "--yaml-formatting") {
+      options.yamlFormatting = parseBoolean(value, name);
     } else {
       throw new TypeError(`Unknown managed-config option: ${name}`);
     }
@@ -228,6 +258,11 @@ export function parseArguments(argv) {
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   try {
     const args = parseArguments(process.argv.slice(2));
+    if (args.mcpSettingsFile) {
+      try { args.mcpSettings = JSON.parse(readFileSync(args.mcpSettingsFile, "utf8")).settings; }
+      catch { throw new TypeError("Cannot read verified startup MCP settings"); }
+      if (!args.mcpSettings) throw new TypeError("Verified startup MCP settings are missing");
+    }
     const managed = buildManagedConfig(args);
     let externalMcp = { servers: {}, permissions: [] };
     if (args.optionsFile) {
@@ -238,11 +273,18 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
       const prepared = prepareUserConfig(options, {
         warn: (message) => process.stderr.write(`${message}\n`),
       });
-      // Only the validated allowlist can override defaults. No policy fields
-      // survive validation, so managed plugins/read-only rules remain mandatory.
-      Object.assign(managed, prepared.config);
+      // Keep bundled entries in the generated config; append custom entries
+      // after all bundled registrations. Upstream owns selector/load semantics.
+      const { plugins: customPlugins = [], ...customConfig } = prepared.config;
+      Object.assign(managed, customConfig);
+      // Explicit false disables all formatting. Explicit true opts into YAML
+      // as well; otherwise the targeted add-on setting controls YAML alone.
+      if (prepared.config.formatter === true) {
+        managed.formatter = buildManagedConfig({ yamlFormatting: true }).formatter;
+      }
       externalMcp = prepared.externalMcp;
       applyExternalMcpConfig(managed, externalMcp);
+      managed.plugins.push(...customPlugins);
       writeFileSync(args.environmentOutput, prepared.providerEnvironment, { mode: 0o600 });
     } else if (args.environmentOutput) {
       throw new TypeError("--environment-output requires --options-file");

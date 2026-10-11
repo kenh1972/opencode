@@ -40,3 +40,16 @@ test("context rejects arbitrary files before reading them", async () => {
   }), /allowlisted/);
   assert.equal(read, false);
 });
+
+test("native-only configuration loads its bounded instructions without requiring bundled capabilities", async () => {
+  const config = buildManagedConfig({ nativeMcpEnabled: true });
+  const options = config.plugins.find((plugin) => plugin.package === DEFAULT_CONTEXT_PACKAGE).options;
+  const hooks = new Map();
+  const dispose = await createContextSetup({
+    readSource: async (path) => path.endsWith("MCP_NATIVE_INSTRUCTIONS.md") ? "fixture-native-routing" : "",
+  })({ options, session: { async hook(kind, fn) { hooks.set(kind, fn); return { async dispose() {} }; } } });
+  const event = { system: [], messages: [] };
+  await hooks.get("context")(event);
+  assert.match(event.system[0].text, /fixture-native-routing/);
+  await dispose();
+});

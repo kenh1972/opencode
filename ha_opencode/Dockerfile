@@ -387,6 +387,11 @@ RUN --mount=type=bind,source=test,target=/tmp/ha-assist/test,readonly \
         /tmp/ha-assist/test/opencode-v2-assist-lifecycle.test.js \
         /tmp/ha-assist/test/opencode-v2-assist-service.test.js
 
+RUN --mount=type=bind,source=test,target=/tmp/mcp-startup/test,readonly \
+    ln -s / /tmp/mcp-startup/rootfs \
+    && node --test /tmp/mcp-startup/test/opencode-v2-mcp-config.test.js \
+        /tmp/mcp-startup/test/opencode-v2-mcp-startup.test.js
+
 FROM runtime AS final
 
 ENTRYPOINT ["/usr/local/bin/opencode-container-init"]

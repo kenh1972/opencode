@@ -16,7 +16,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const PROXY_SCRIPT = path.join(__dirname, "..", "rootfs", "usr", "local", "bin", "openchamber-ingress-proxy.js");
-const BETA_PROXY_SCRIPT = path.join(__dirname, "..", "..", "ha_opencode_beta", "rootfs", "usr", "local", "bin", "openchamber-ingress-proxy.js");
+const STABLE_PROXY_SCRIPT = path.join(__dirname, "..", "..", "ha_opencode", "rootfs", "usr", "local", "bin", "openchamber-ingress-proxy.js");
 const INGRESS_PATH = "/api/hassio_ingress/abc123";
 
 function freePort() {
@@ -761,8 +761,8 @@ describe("openchamber ingress proxy: disconnected clients", () => {
 
 describe("openchamber ingress proxy: release parity", () => {
   it("keeps shared forwarding and Assist route protection identical across channels", () => {
-    const stable = fs.readFileSync(PROXY_SCRIPT, "utf8");
-    const beta = fs.readFileSync(BETA_PROXY_SCRIPT, "utf8");
+    const stable = fs.readFileSync(STABLE_PROXY_SCRIPT, "utf8");
+    const beta = fs.readFileSync(PROXY_SCRIPT, "utf8");
     assert.ok(beta.includes("/^\\/ha-(?:mcp|assist)(?:[/?]|$)/"));
     assert.equal(beta, stable);
   });

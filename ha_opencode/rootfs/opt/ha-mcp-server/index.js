@@ -7681,6 +7681,7 @@ async function main() {
       port: Number(portText),
       socketPath,
       publicHost: process.env.OPENCODE_MCP_SIDECAR_PUBLIC_HOST,
+      bundledEnabled: process.env.OPENCODE_MCP_ENABLED !== "false",
       jsonRpcHandlers: nativeMcpHandler ? { "/native-mcp": nativeMcpHandler } : {},
     });
     close = () => listener.close();

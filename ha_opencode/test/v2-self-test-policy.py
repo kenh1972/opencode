@@ -28,7 +28,7 @@ class PolicyTest(unittest.TestCase):
             "--plugin-enabled", "false", "--native-mcp-enabled", "false",
         ], text=True))
 
-    def exercise(self, plugins, mcp=False, context=True, external=()):
+    def exercise(self, plugins, mcp=False, native=False, context=True, external=(), extra_servers=()):
         requests = []
 
         class Client:
@@ -42,17 +42,18 @@ class PolicyTest(unittest.TestCase):
                 return {
                     "/api/info": {"version": VERSION},
                     "/api/plugin": {"data": plugins + ([{"id": "homeassistant.context", "state": {"status": "active"}}] if context else [])},
-                    "/api/mcp": {"data": ([{"name": "homeassistant", "status": {"status": "connected"}}] if mcp else []) + [
+                    "/api/mcp": {"data": ([{"name": "homeassistant", "status": {"status": "connected"}}] if mcp else [])
+                    + ([{"name": "homeassistant_native", "status": {"status": "connected"}}] if native else []) + [
                         {"name": name, "status": {"status": "connected"}} for name in external
-                    ]},
+                    ] + [{"name": name, "status": {"status": "connected"}} for name in extra_servers]},
                     f"/api/agent/{AGENT}": {"data": {"id": AGENT, **self.config["agents"][AGENT]}},
                 }[path]
 
         reporter = POLICY["Reporter"](True)
         with patch.object(POLICY["time"], "sleep"):
-            EXERCISE(Client(), VERSION, mcp, False, reporter, external_mcp_names=external)
+            EXERCISE(Client(), VERSION, mcp, native, reporter, external_mcp_names=external)
         self.assertEqual(requests[-1][0], f"/api/agent/{AGENT}")
-        self.assertEqual(reporter.passed, 26 + (2 if mcp else 0) + (1 if external else 0))
+        self.assertEqual(reporter.passed, 26 + int(bool(mcp or native or external)) + int(mcp) + int(native) + int(bool(external)))
 
     def test_external_mcp_health_is_required(self):
         self.exercise(
@@ -61,6 +62,50 @@ class PolicyTest(unittest.TestCase):
             mcp=True,
             external=("metrics",),
         )
+
+    def test_external_only_plugin_is_required_and_does_not_enable_bundled_tools(self):
+        self.exercise(
+            [{"id": "homeassistant.runtime-guard", "state": {"status": "active"}},
+             {"id": "homeassistant.mcp", "state": {"status": "active"}}],
+            external=("metrics",),
+        )
+
+    def test_missing_external_only_plugin_fails_closed(self):
+        with self.assertRaisesRegex(POLICY["SelfTestError"], "timed out waiting"):
+            self.exercise(
+                [{"id": "homeassistant.runtime-guard", "state": {"status": "active"}}],
+                external=("metrics",),
+            )
+
+    def test_native_only_plugin_is_required_without_bundled_registration(self):
+        self.exercise(
+            [{"id": "homeassistant.runtime-guard", "state": {"status": "active"}},
+             {"id": "homeassistant.mcp", "state": {"status": "active"}}],
+            native=True,
+        )
+
+    def test_both_native_and_bundled_connections(self):
+        self.exercise(
+            [{"id": "homeassistant.runtime-guard", "state": {"status": "active"}},
+             {"id": "homeassistant.mcp", "state": {"status": "active"}}],
+            mcp=True, native=True,
+        )
+
+    def test_missing_native_only_plugin_fails_closed(self):
+        with self.assertRaisesRegex(POLICY["SelfTestError"], "timed out waiting"):
+            self.exercise(
+                [{"id": "homeassistant.runtime-guard", "state": {"status": "active"}}],
+                native=True,
+            )
+
+    def test_disabled_connections_cannot_remain_registered(self):
+        plugins = [
+            {"id": "homeassistant.runtime-guard", "state": {"status": "active"}},
+            {"id": "homeassistant.mcp", "state": {"status": "active"}},
+        ]
+        for mcp, native, unwanted in [(False, True, "homeassistant"), (True, False, "homeassistant_native")]:
+            with self.subTest(unwanted=unwanted), self.assertRaisesRegex(POLICY["SelfTestError"], "present while disabled"):
+                self.exercise(plugins, mcp=mcp, native=native, extra_servers=(unwanted,))
 
     def test_nested_active_completes_policy_with_generated_permissions(self):
         self.exercise([{"id": "homeassistant.runtime-guard", "state": {"status": "active"}}])

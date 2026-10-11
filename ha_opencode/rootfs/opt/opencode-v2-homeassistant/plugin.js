@@ -87,24 +87,32 @@ function requireTimeouts(value) {
 
 export function parseOptions(value) {
   const input = requireObject(value);
-  const allowed = new Set(["endpoint", "nativeEnabled", "nativeEndpoint", "timeouts", "externalServers"]);
+  const allowed = new Set(["bundledEnabled", "endpoint", "nativeEnabled", "nativeEndpoint", "timeouts", "externalServers"]);
   const unknown = Object.keys(input).filter((key) => !allowed.has(key));
   if (unknown.length > 0) {
     throw new TypeError(`Unknown Home Assistant plugin option: ${unknown.join(", ")}`);
   }
 
-  const endpoint = requireLoopbackEndpoint(input.endpoint, "/mcp", "endpoint");
-  if (input.nativeEnabled !== undefined && typeof input.nativeEnabled !== "boolean") {
-    throw new TypeError("Home Assistant plugin option 'nativeEnabled' must be true or false");
+  for (const name of ["bundledEnabled", "nativeEnabled"]) {
+    if (input[name] !== undefined && typeof input[name] !== "boolean") {
+      throw new TypeError(`Home Assistant plugin option '${name}' must be true or false`);
+    }
   }
+  // Omitted bundledEnabled preserves existing plugin configurations. An explicit
+  // false allows native-only/external-only activation without acquiring needless
+  // credentials or requiring an unused bundled endpoint.
+  const bundledEnabled = input.bundledEnabled ?? true;
+  const nativeEnabled = input.nativeEnabled ?? false;
+  const endpoint = bundledEnabled || input.endpoint !== undefined
+    ? requireLoopbackEndpoint(input.endpoint, "/mcp", "endpoint") : undefined;
+  const nativeEndpoint = nativeEnabled || input.nativeEndpoint !== undefined || endpoint
+    ? requireLoopbackEndpoint(input.nativeEndpoint ?? (endpoint ? nativeEndpointFor(endpoint) : undefined),
+      "/native-mcp", "nativeEndpoint") : undefined;
   return {
-    endpoint,
-    nativeEnabled: input.nativeEnabled ?? false,
-    nativeEndpoint: requireLoopbackEndpoint(
-      input.nativeEndpoint ?? nativeEndpointFor(endpoint),
-      "/native-mcp",
-      "nativeEndpoint",
-    ),
+    bundledEnabled,
+    ...(endpoint ? { endpoint } : {}),
+    nativeEnabled,
+    ...(nativeEndpoint ? { nativeEndpoint } : {}),
     timeouts: requireTimeouts(input.timeouts),
     ...(input.externalServers === undefined ? {} : { externalServers: validateExternalServers(input.externalServers) }),
   };
@@ -188,27 +196,43 @@ async function disposeRegistrations(registrations) {
 export function createSetup({ readSecret = readCallerSecret, resolveExternal = resolveExternalServers } = {}) {
   return async function setup(ctx) {
     const input = requireObject(ctx.options);
-    const { externalServers, ...managedOptions } = input;
-    const options = parseOptions(managedOptions);
-    const callerSecret = requireCallerSecret(await readSecret());
-    const server = createServerConfig(options, callerSecret);
-    const nativeServer = options.nativeEnabled
-      ? createServerConfig(options, callerSecret, options.nativeEndpoint)
-      : null;
-    const registrations = [await ctx.mcp.transform((draft) => {
-      draft.set(MCP_SERVER_NAME, server);
-      if (nativeServer) draft.set(NATIVE_MCP_SERVER_NAME, nativeServer);
-    })];
-
-    if (externalServers !== undefined) {
+    const options = parseOptions(input);
+    const registrations = [];
+    let managedFailed = false;
+    if (options.bundledEnabled || options.nativeEnabled) {
       try {
-        const resolved = await resolveExternal(externalServers);
+        const callerSecret = requireCallerSecret(await readSecret());
+        const server = options.bundledEnabled ? createServerConfig(options, callerSecret) : null;
+        const nativeServer = options.nativeEnabled
+          ? createServerConfig(options, callerSecret, options.nativeEndpoint) : null;
         registrations.push(await ctx.mcp.transform((draft) => {
-          for (const [name, externalServer] of Object.entries(resolved)) draft.set(name, externalServer);
+          if (server) draft.set(MCP_SERVER_NAME, server);
+          if (nativeServer) draft.set(NATIVE_MCP_SERVER_NAME, nativeServer);
         }));
+      } catch {
+        managedFailed = true;
+      }
+    }
+
+    if (options.externalServers !== undefined) {
+      try {
+        const resolved = await resolveExternal(options.externalServers);
+        if (Object.keys(resolved).length > 0) {
+          registrations.push(await ctx.mcp.transform((draft) => {
+            for (const [name, externalServer] of Object.entries(resolved)) draft.set(name, externalServer);
+          }));
+        }
       } catch {
         console.error("External MCP servers were not registered; check the add-on configuration, secret files, and local executables");
       }
+    }
+
+    if (managedFailed) {
+      const message = "Home Assistant MCP registration failed; check the sidecar status and restart the app";
+      // A broken HA boundary must not prevent unrelated external MCPs from
+      // loading. Never attach the credential-bearing underlying exception.
+      if (registrations.length === 0) throw new Error(message);
+      console.error(message);
     }
 
     return async () => {

@@ -51,17 +51,6 @@ describe("OpenCode V2 state isolation", () => {
     "ha-opencode-v2-mcp-sidecar",
     "run",
   );
-  const betaSidecar = read(
-    ADDON,
-    "..",
-    "ha_opencode_beta",
-    "rootfs",
-    "etc",
-    "s6-overlay",
-    "s6-rc.d",
-    "ha-opencode-v2-mcp-sidecar",
-    "run",
-  );
   const v2Plugin = read(ROOTFS, "opt", "opencode-v2-homeassistant", "plugin.js");
   const runtimeGuard = read(ROOTFS, "opt", "opencode-v2-homeassistant", "runtime-guard.js");
   const nonDumpable = read(ROOTFS, "opt", "opencode-v2-homeassistant", "non-dumpable.c");
@@ -86,9 +75,11 @@ describe("OpenCode V2 state isolation", () => {
   const mcpServer = read(ROOTFS, "opt", "ha-mcp-server", "index.js");
 
   it("keeps stable and beta decision notes in their own MCP sidecars", () => {
-    assert.match(v2Sidecar, /^\s+ADDON_CHANNEL=stable \\$/m);
-    assert.match(v2Sidecar, /^\s+OPENCODE_DECISION_NOTES_DIR="\$\{OPENCODE_DECISION_NOTES_DIR:-\/homeassistant\/opencode\}" \\$/m);
-    assert.doesNotMatch(v2Sidecar, /\/homeassistant\/opencode_beta/);
+    const stableSidecar = read(ADDON, "..", "ha_opencode", "rootfs", "etc", "s6-overlay", "s6-rc.d", "ha-opencode-v2-mcp-sidecar", "run");
+    assert.match(stableSidecar, /^\s+ADDON_CHANNEL=stable \\$/m);
+    assert.match(stableSidecar, /^\s+OPENCODE_DECISION_NOTES_DIR="\$\{OPENCODE_DECISION_NOTES_DIR:-\/homeassistant\/opencode\}" \\$/m);
+    assert.doesNotMatch(stableSidecar, /\/homeassistant\/opencode_beta/);
+    const betaSidecar = read(path.join(ADDON, "..", "ha_opencode_beta", "rootfs", "etc", "s6-overlay", "s6-rc.d", "ha-opencode-v2-mcp-sidecar", "run"));
     assert.match(betaSidecar, /^\s+ADDON_CHANNEL=beta \\$/m);
     assert.match(betaSidecar, /^\s+OPENCODE_DECISION_NOTES_DIR="\$\{OPENCODE_DECISION_NOTES_DIR:-\/homeassistant\/opencode_beta\}" \\$/m);
   });
@@ -151,6 +142,18 @@ describe("OpenCode V2 state isolation", () => {
     assert.ok(
       init.indexOf("opencode-v2-migrate.py prepare") < init.indexOf("setsid node /usr/local/bin/discover-services.js"),
     );
+  });
+
+  it("verifies native settings before rewriting provenance markers and stages shared infrastructure independently", () => {
+    const nativeMigration = init.indexOf("node /opt/opencode-v2-homeassistant/mcp-startup.js");
+    const versionMarker = init.indexOf('> /data/.addon_version');
+    assert.ok(nativeMigration >= 0 && nativeMigration < versionMarker);
+    assert.match(init, /--mcp-settings-file/);
+    assert.match(init, /V2_NATIVE_MCP_ENABLED=\$\(\[ "\$\{NATIVE_HA_MCP_ENABLED\}" = "true" \]/);
+    assert.match(init, /if \[ "\$\{V2_SIDECAR_REQUIRED\}" = "true" \]/);
+    assert.match(init, /MCP_STARTUP_READY=false/);
+    assert.match(init, /NATIVE_HA_MCP_ENABLED=false/);
+    assert.match(init, /catalogue loading are pending/);
   });
 
   it("migrates sessions without importing V1 provider credentials", () => {
@@ -242,7 +245,9 @@ describe("OpenCode V2 state isolation", () => {
     assert.match(secureLauncher, /execve\(child_argv\[0\], child_argv, environ\)/);
     assert.doesNotMatch(secureLauncher, /--client|client-credential|publish_expected_client/);
     assert.doesNotMatch(credentialBroker, /client_mode|client-credential|validate_expected_client/);
-    assert.match(v2Server, /http:\/\/127\.0\.0\.1:8765\/mcp/);
+    assert.match(v2Server, /SIDECAR_HEALTH_PATH=mcp/);
+    assert.match(v2Server, /SIDECAR_HEALTH_PATH=native-mcp/);
+    assert.match(v2Server, /http:\/\/127\.0\.0\.1:8765\/\$\{SIDECAR_HEALTH_PATH\}/);
     assert.match(v2Server, /sidecar is not ready"\n        exit 1/);
     const sidecarReadyCheck = v2Server.indexOf("SIDECAR_READY=false");
     const serverLaunch = v2Server.indexOf("exec /usr/local/bin/opencode-v2-launch");

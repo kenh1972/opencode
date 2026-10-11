@@ -15,6 +15,22 @@ source /usr/local/lib/opencode/v2-environment.sh
 
 bashio::log.info "Initializing ${ADDON_CHANNEL_LABEL} (${ADDON_CHANNEL} channel)..."
 
+# Resolve native settings BEFORE overwriting version markers or creating data
+# directories that would erase fresh/legacy evidence. Journal, save, read back;
+# failures withhold native activation, not ordinary bundled tools.
+MCP_STARTUP_FILE=/run/opencode-mcp-startup.json
+MCP_STARTUP_READY=false
+rm -f "${MCP_STARTUP_FILE}"
+if node /opt/opencode-v2-homeassistant/mcp-startup.js /data "${MCP_STARTUP_FILE}"; then
+    MCP_STARTUP_READY=true
+    if [ "$(jq -r '.configuration.selectionMigration // empty' "${MCP_STARTUP_FILE}")" = "assist_to_home_assistant" ]; then
+        bashio::log.notice "Native MCP selection migrated once from Assist to Home Assistant's configured /api/mcp; custom selections and effective enabled/disabled states are preserved"
+        bashio::log.notice "The native catalogue now follows HA's selected APIs; Expose all LLM APIs can include later additions. Select Assist explicitly to opt back into its narrower catalogue."
+    fi
+else
+    bashio::log.warning "Native MCP migration/default activation was not verified; native remains off this boot. Bundled tools are unaffected. Review native settings/Supervisor access and restart."
+fi
+
 # Save addon version for the terminal banner
 ADDON_VERSION=$(bashio::addon.version)
 printf '%s\n' "${ADDON_VERSION}" > /data/.addon_version
@@ -28,8 +44,18 @@ CPU_MODE_CONFIG=$(bashio::config 'cpu_mode' || echo "auto")
 SELECTED_INTERFACE_MODE=$(bashio::config 'interface_mode' 2>/dev/null || echo "terminal")
 MCP_ENABLED=$(bashio::config 'mcp_enabled')
 MCP_TOOL_PROFILE=$(bashio::config 'mcp_tool_profile' 2>/dev/null || echo "full")
-NATIVE_HA_MCP_ENABLED=$(bashio::config 'native_ha_mcp_enabled' 2>/dev/null || echo "false")
-NATIVE_HA_MCP_API_ID=$(bashio::config 'native_ha_mcp_api_id' 2>/dev/null || echo "assist")
+NATIVE_HA_MCP_ENABLED=false
+NATIVE_HA_MCP_API_ID=""
+NATIVE_HA_MCP_SELECTION=home_assistant
+NATIVE_HA_MCP_ENDPOINT_MODE=configured
+if [ "${MCP_STARTUP_READY}" = "true" ]; then
+    MCP_ENABLED=$(jq -r '.configuration.bundled.enabled' "${MCP_STARTUP_FILE}")
+    MCP_TOOL_PROFILE=$(jq -r '.configuration.bundled.profile' "${MCP_STARTUP_FILE}")
+    NATIVE_HA_MCP_ENABLED=$(jq -r '.configuration.native.enabled' "${MCP_STARTUP_FILE}")
+    NATIVE_HA_MCP_API_ID=$(jq -r '.configuration.native.apiId // ""' "${MCP_STARTUP_FILE}")
+    NATIVE_HA_MCP_SELECTION=$(jq -r '.configuration.native.selection' "${MCP_STARTUP_FILE}")
+    NATIVE_HA_MCP_ENDPOINT_MODE=$(jq -r '.configuration.native.endpointMode' "${MCP_STARTUP_FILE}")
+fi
 LSP_ENABLED=$(bashio::config 'lsp_enabled' 'true')
 SCREENSHOT_ENABLED=$(bashio::config 'screenshot_enabled' || echo "false")
 ADDON_ACCESS_ENABLED=$(bashio::config 'addon_access_enabled' || echo "false")
@@ -93,7 +119,7 @@ if [ "${USER_HOOKS_ENABLED}" != "true" ]; then
     USER_HOOKS_ENABLED="false"
 fi
 
-bashio::log.info "Configuration: INTERFACE_MODE=${INTERFACE_MODE} MCP=${MCP_ENABLED} MCP_TOOL_PROFILE=${MCP_TOOL_PROFILE} NATIVE_HA_MCP=${NATIVE_HA_MCP_ENABLED} NATIVE_HA_MCP_API_ID=${NATIVE_HA_MCP_API_ID} LSP=${LSP_ENABLED} SCREENSHOT=${SCREENSHOT_ENABLED} PPQ_PRIVATE=${PPQ_PRIVATE_ENABLED} ADDON_ACCESS=${ADDON_ACCESS_ENABLED} CPU_MODE=${CPU_MODE_CONFIG} RESTRICT_SENSITIVE_FILES=${RESTRICT_SENSITIVE_FILES} FOCUS_MODE=${FOCUS_MODE} HOME_BRIEFING=${HOME_BRIEFING_ENABLED} DECISION_NOTES=${DECISION_NOTES_ENABLED} USER_HOOKS=${USER_HOOKS_ENABLED}"
+bashio::log.info "Configuration: INTERFACE_MODE=${INTERFACE_MODE} MCP=${MCP_ENABLED} MCP_TOOL_PROFILE=${MCP_TOOL_PROFILE} NATIVE_HA_MCP=${NATIVE_HA_MCP_ENABLED} NATIVE_SELECTION=${NATIVE_HA_MCP_SELECTION} LSP=${LSP_ENABLED} SCREENSHOT=${SCREENSHOT_ENABLED} PPQ_PRIVATE=${PPQ_PRIVATE_ENABLED} ADDON_ACCESS=${ADDON_ACCESS_ENABLED} CPU_MODE=${CPU_MODE_CONFIG} RESTRICT_SENSITIVE_FILES=${RESTRICT_SENSITIVE_FILES} FOCUS_MODE=${FOCUS_MODE} HOME_BRIEFING=${HOME_BRIEFING_ENABLED} DECISION_NOTES=${DECISION_NOTES_ENABLED} USER_HOOKS=${USER_HOOKS_ENABLED}"
 
 # ==============================================================================
 # Runtime paths
@@ -183,6 +209,7 @@ ENV_VARS_COUNT=$(jq -r '.env_vars // [] | length' "${OPTIONS_FILE}")
 # Reserved names that would break the add-on if overridden
 ENV_VARS_RESERVED='"HOME","PATH","SUPERVISOR_TOKEN","HA_TOKEN","HA_ACCESS_TOKEN","HA_NATIVE_MCP_API_ID","HA_URL","HA_VERIFY_SSL","SCREENSHOT_ENABLED","PORT","OPENCODE_MCP_TOOL_PROFILE","OPENCODE_NATIVE_HA_MCP_ENABLED","TMPDIR","XDG_DATA_HOME","XDG_CONFIG_HOME","XDG_STATE_HOME","XDG_CACHE_HOME","NPM_CONFIG_PREFIX","npm_config_prefix","NODE_OPTIONS","OPENCODE_DISABLE_AUTOUPDATE","OPENCODE_CONFIG","OPENCODE_CONFIG_CONTENT","OPENCODE_CONFIG_DIR","OPENCODE_DISABLE_PROJECT_CONFIG","OPENCODE_SERVER_USERNAME","OPENCODE_SERVER_PASSWORD","OPENCODE_V2_ROOT","OPENCODE_V2_HOME","OPENCODE_V2_CONFIG_HOME","OPENCODE_V2_DATA_HOME","OPENCODE_V2_STATE_HOME","OPENCODE_V2_CACHE_HOME","OPENCODE_V2_WORK_ROOT","LD_PRELOAD","LD_LIBRARY_PATH","BASH_ENV","ENV","CDPATH","GLOBIGNORE","BASHOPTS","SHELLOPTS","IFS","SHELL","USER","PWD"'
 
+ENV_VARS_RESERVED="${ENV_VARS_RESERVED},\"HA_NATIVE_MCP_ENDPOINT_MODE\""
 if [ "${ENV_VARS_COUNT}" -gt 0 ]; then
     bashio::log.info "Processing ${ENV_VARS_COUNT} user-defined environment variable(s)..."
 
@@ -579,11 +606,20 @@ fi
 # the bundled plugin only through an inherited descriptor; it is never written
 # to config or the inherited server environment.
 V2_RUNTIME_ROOT=/run/opencode-v2
+V2_TUI_STATE_READY=false
+if python3 /usr/local/bin/opencode-v2-tui-state.py; then
+    V2_TUI_STATE_READY=true
+fi
 rm -rf -- "${V2_RUNTIME_ROOT}"
 if [ "${V2_STATE_READY}" = "true" ] && opencode_v2_select_generation; then
     V2_RESTRICT_BOOL=$([ "${RESTRICT_SENSITIVE_FILES}" = "true" ] && echo "true" || echo "false")
     V2_PLUGIN_ENABLED=$([ "${MCP_ENABLED}" = "true" ] && echo "true" || echo "false")
-    V2_NATIVE_MCP_ENABLED=$([ "${V2_PLUGIN_ENABLED}" = "true" ] && [ "${NATIVE_HA_MCP_ENABLED}" = "true" ] && echo "true" || echo "false")
+    V2_NATIVE_MCP_ENABLED=$([ "${NATIVE_HA_MCP_ENABLED}" = "true" ] && echo "true" || echo "false")
+    V2_SIDECAR_REQUIRED=$([ "${V2_PLUGIN_ENABLED}" = "true" ] || [ "${V2_NATIVE_MCP_ENABLED}" = "true" ] && echo "true" || echo "false")
+    V2_MCP_SETTINGS_ARGS=()
+    if [ "${MCP_STARTUP_READY}" = "true" ]; then
+        V2_MCP_SETTINGS_ARGS=(--mcp-settings-file "${MCP_STARTUP_FILE}")
+    fi
     V2_CONFIG_TEMP=""
     V2_PROVIDER_ENV_TEMP=""
     V2_PASSWORD_TEMP=""
@@ -617,10 +653,11 @@ if [ "${V2_STATE_READY}" = "true" ] && opencode_v2_select_generation; then
         V2_PROVIDER_ENV_TEMP=$(mktemp "${V2_RUNTIME_ROOT}/.provider-env.XXXXXX")
         V2_EXTERNAL_MCP_TEMP=$(mktemp "${V2_RUNTIME_ROOT}/.external-mcp.XXXXXX")
         V2_PASSWORD_TEMP=$(mktemp "${V2_RUNTIME_ROOT}/.password.XXXXXX")
-        if [ "${V2_PLUGIN_ENABLED}" = "true" ]; then
+        if [ "${V2_SIDECAR_REQUIRED}" = "true" ]; then
             V2_SIDECAR_SECRET_TEMP=$(mktemp "${V2_RUNTIME_ROOT}/.sidecar.XXXXXX")
         fi
         if { node /opt/opencode-v2-homeassistant/managed-config.js \
+                "${V2_MCP_SETTINGS_ARGS[@]}" \
                 --options-file /data/options.json \
                 --environment-output "${V2_PROVIDER_ENV_TEMP}" \
                 --external-mcp-output "${V2_EXTERNAL_MCP_TEMP}" \
@@ -634,6 +671,7 @@ if [ "${V2_STATE_READY}" = "true" ] && opencode_v2_select_generation; then
                 --home-briefing "${HOME_BRIEFING_ENABLED}" \
                 --decision-notes "${DECISION_NOTES_ENABLED}" \
                 --lsp-enabled "${LSP_ENABLED}" \
+                --yaml-formatting "$([ "$(bashio::config 'yaml_formatting' 2>/dev/null || true)" = "true" ] && echo true || echo false)" \
                 --user-hooks "${USER_HOOKS_ENABLED}" > "${V2_CONFIG_TEMP}" \
                 || { touch "${V2_RUNTIME_ROOT}/configuration-error"; false; }; } \
             && node /opt/opencode-v2-homeassistant/lan-config.js --write /data/options.json "${V2_RUNTIME_ROOT}/lan.json" \
@@ -641,7 +679,7 @@ if [ "${V2_STATE_READY}" = "true" ] && opencode_v2_select_generation; then
             && { od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "${V2_PASSWORD_TEMP}"; } \
             && test "$(wc -c < "${V2_PASSWORD_TEMP}")" -eq 64 \
             && chmod 600 "${V2_PASSWORD_TEMP}" \
-            && { [ "${V2_PLUGIN_ENABLED}" != "true" ] \
+            && { [ "${V2_SIDECAR_REQUIRED}" != "true" ] \
                 || { od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "${V2_SIDECAR_SECRET_TEMP}" \
                     && test "$(wc -c < "${V2_SIDECAR_SECRET_TEMP}")" -eq 64 \
                     && chmod 600 "${V2_SIDECAR_SECRET_TEMP}"; }; } \
@@ -649,16 +687,16 @@ if [ "${V2_STATE_READY}" = "true" ] && opencode_v2_select_generation; then
             && mv -f "${V2_PROVIDER_ENV_TEMP}" "${V2_RUNTIME_ROOT}/provider-env" \
             && mv -f "${V2_EXTERNAL_MCP_TEMP}" "${V2_RUNTIME_ROOT}/external-mcp-enabled" \
             && mv -f "${V2_PASSWORD_TEMP}" "${V2_RUNTIME_ROOT}/server-password" \
-            && { [ "${V2_PLUGIN_ENABLED}" != "true" ] \
+            && { [ "${V2_SIDECAR_REQUIRED}" != "true" ] \
                 || { mv -f "${V2_SIDECAR_SECRET_TEMP}" "${V2_RUNTIME_ROOT}/sidecar-secret" \
                     && V2_SIDECAR_ENV_TEMP=$(mktemp "${V2_RUNTIME_ROOT}/.sidecar-env.XXXXXX") \
                     && { \
-                        printf 'export OPENCODE_MCP_ENABLED=true\n'; \
+                        printf 'export OPENCODE_MCP_ENABLED=%q\n' "${V2_PLUGIN_ENABLED}"; \
                         printf 'export OPENCODE_MCP_TOOL_PROFILE=%q\n' "${MCP_TOOL_PROFILE}"; \
                         printf 'export SUPERVISOR_TOKEN=%q\n' "${SUPERVISOR_TOKEN}"; \
                         printf 'export HA_ACCESS_TOKEN=%q\n' "${ACCESS_TOKEN}"; \
                         printf 'export HA_NATIVE_MCP_API_ID=%q\n' "${NATIVE_HA_MCP_API_ID}"; \
-                        printf 'export HA_NATIVE_MCP_ENDPOINT_MODE=%q\n' "${HA_NATIVE_MCP_ENDPOINT_MODE:-auto}"; \
+                        printf 'export HA_NATIVE_MCP_ENDPOINT_MODE=%q\n' "${NATIVE_HA_MCP_ENDPOINT_MODE}"; \
                         printf 'export HA_NATIVE_MCP_SANITIZE_SCHEMAS=%q\n' "${HA_NATIVE_MCP_SANITIZE_SCHEMAS:-1}"; \
                         printf 'export OPENCODE_NATIVE_HA_MCP_ENABLED=%q\n' "${V2_NATIVE_MCP_ENABLED}"; \
                         printf 'export OPENCODE_DECISION_NOTES=%q\n' "${DECISION_NOTES_ENABLED}"; \
@@ -676,12 +714,16 @@ if [ "${V2_STATE_READY}" = "true" ] && opencode_v2_select_generation; then
             chmod 600 "${V2_RUNTIME_ROOT}/native-mcp-enabled"
             printf '%s\n' "${LSP_ENABLED}" > "${V2_RUNTIME_ROOT}/lsp-enabled"
             chmod 600 "${V2_RUNTIME_ROOT}/lsp-enabled"
+            if [ "${V2_TUI_STATE_READY}" = "true" ]; then
+                touch "${V2_RUNTIME_ROOT}/tui-state-ready"
+                chmod 600 "${V2_RUNTIME_ROOT}/tui-state-ready"
+            fi
             bashio::log.info "OpenCode V2 managed configuration and private loopback server are ready"
             if [ "${MCP_ENABLED}" = "true" ]; then
-                bashio::log.info "OpenCode V2 Home Assistant MCP is ready behind a credential-isolated sidecar"
+                bashio::log.info "OpenCode V2 Home Assistant MCP is configured; sidecar transport and tool catalogue loading are pending"
             fi
             if [ "${V2_NATIVE_MCP_ENABLED}" = "true" ]; then
-                bashio::log.info "OpenCode V2 native Home Assistant MCP bridge is ready behind the credential-isolated sidecar"
+                bashio::log.info "OpenCode V2 native Home Assistant MCP is configured (${NATIVE_HA_MCP_SELECTION}); HA's MCP Server must be enabled. Connection and catalogue loading are pending."
             fi
         else
             rm -f -- "${V2_CONFIG_TEMP}" "${V2_PROVIDER_ENV_TEMP}" "${V2_EXTERNAL_MCP_TEMP}" "${V2_PASSWORD_TEMP}" "${V2_SIDECAR_SECRET_TEMP}" "${V2_SIDECAR_ENV_TEMP}"

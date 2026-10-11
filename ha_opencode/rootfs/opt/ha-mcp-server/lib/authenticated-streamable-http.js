@@ -157,11 +157,13 @@ export async function startAuthenticatedStreamableHttp(
     socketPath,
     publicHost,
     jsonRpcHandlers = {},
+    bundledEnabled = true,
     maxSessions = 32,
     sessionIdleMs = 30 * 60_000,
   } = {},
 ) {
   if (typeof createMcpServer !== "function") throw new Error("An MCP server factory is required");
+  if (typeof bundledEnabled !== "boolean") throw new Error("Invalid bundled MCP activation flag");
   if (!Number.isInteger(maxSessions) || maxSessions < 1 ||
       !Number.isInteger(sessionIdleMs) || sessionIdleMs < 1) throw new Error("Invalid MCP session limits");
   if (socketPath) {
@@ -208,7 +210,7 @@ export async function startAuthenticatedStreamableHttp(
       return;
     }
     const jsonRpcHandler = additionalHandlers.get(request.url);
-    if (request.url !== MCP_PATH && !jsonRpcHandler) {
+    if ((request.url === MCP_PATH && !bundledEnabled) || (request.url !== MCP_PATH && !jsonRpcHandler)) {
       sendJson(response, 404, "Not found");
       return;
     }
