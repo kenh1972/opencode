@@ -153,9 +153,13 @@ configuration:
     name: "Environment variables"
     description: "The V2 backend accepts non-reserved provider *_API_KEY variables such as OPENAI_API_KEY. Other variables have separate shell/service handling and produce a backend warning. Critical system and HA credential variables cannot be overridden. Provider keys are not isolated from backend subprocesses; configure them privately, not in chat."
 
+  custom_plugins_enabled:
+    name: "Enable third-party plugins"
+    description: "Off by default. Enables native V2 plugins entries in Custom OpenCode configuration; upstream handles package loading and updates. Plugins run as trusted root-level backend code, not sandboxed AI tools. Compatibility and behavior are your responsibility. Turn off and restart to ignore saved custom entries without deleting them. Project plugin discovery remains disabled. See Documentation."
+
   opencode_config:
     name: "Custom OpenCode configuration"
-    description: "V2 JSON subset: model, default_agent, providers, boolean formatter, compaction, media, tool_output and websearch. Supported legacy provider entries are converted in memory; see Documentation for limits. Invalid fields stop activation until corrected; saved options are preserved. Managed permissions, plugins, runtime and integration policy cannot be overridden."
+    description: "V2 JSON subset: model, default_agent, providers, boolean formatter, compaction, media, tool_output and websearch; plugins is passed to upstream only when Enable third-party plugins is on, otherwise ignored. Supported legacy provider entries are converted in memory; see Documentation for limits. Invalid enabled fields stop activation; saved options are preserved. Direct permissions, agents, runtime and integration policy overrides remain unsupported."
 
   external_mcp_config:
     name: "External MCP configuration"

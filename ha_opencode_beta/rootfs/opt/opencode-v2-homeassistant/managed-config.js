@@ -251,9 +251,10 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
       const prepared = prepareUserConfig(options, {
         warn: (message) => process.stderr.write(`${message}\n`),
       });
-      // Only the validated allowlist can override defaults. No policy fields
-      // survive validation, so managed plugins/read-only rules remain mandatory.
-      Object.assign(managed, prepared.config);
+      // Keep bundled entries in the generated config; append custom entries
+      // after all bundled registrations. Upstream owns selector/load semantics.
+      const { plugins: customPlugins = [], ...customConfig } = prepared.config;
+      Object.assign(managed, customConfig);
       // Explicit false disables all formatting. Explicit true opts into YAML
       // as well; otherwise the targeted add-on setting controls YAML alone.
       if (prepared.config.formatter === true) {
@@ -261,6 +262,7 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
       }
       externalMcp = prepared.externalMcp;
       applyExternalMcpConfig(managed, externalMcp);
+      managed.plugins.push(...customPlugins);
       writeFileSync(args.environmentOutput, prepared.providerEnvironment, { mode: 0o600 });
     } else if (args.environmentOutput) {
       throw new TypeError("--environment-output requires --options-file");

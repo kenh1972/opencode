@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Add default-off third-party plugin loading through upstream V2, with documented trust, persistence and disable-to-recover behavior ([#166](https://github.com/magnusoverli/opencode/issues/166)).
 - Clarify HA 2026.10 MCP setup, Assist versus Your MCP API, and the reverse read-only connection in docs and configuration help; defaults are unchanged.
 
 ## 3.2.2b0

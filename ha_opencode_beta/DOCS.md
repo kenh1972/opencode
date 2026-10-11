@@ -211,7 +211,7 @@ Treat `/addon_configs` as sensitive because it may contain configuration data fo
 
 By default (**Restrict access to sensitive files** = `true`), the add-on adds an OpenCode `permission.read` rule that blocks the AI's file-**read** tool from opening secret/credential files — `secrets.yaml` (any path ending in `secrets.yaml`), the `.storage/` and `.cloud/` directories, the `ssl/` directory, and any `*.key`/`*.pem` files — so their contents can't be pulled into the model's context. Everything else stays readable, and the agent can still edit normal config that *references* secrets via `!secret`. The Home Assistant MCP tools are unaffected; they read live state through the API.
 
-Set **Restrict access to sensitive files** to `false` to remove the normal agent's sensitive-file read rules. The read-only agent retains its own restrictions. The supported native `opencode_config` subset is validated before activation and cannot override managed permissions, plugins or integration policy; see [Custom Providers and Configuration](#custom-providers-and-configuration-beta).
+Set **Restrict access to sensitive files** to `false` to remove the normal agent's sensitive-file read rules. The read-only agent retains its own restrictions. The supported native `opencode_config` subset is validated before activation and does not accept direct managed-policy overrides. Opting into [third-party plugins](#third-party-plugins-beta) loads trusted backend code that is not constrained by these tool permissions; see [Custom Providers and Configuration](#custom-providers-and-configuration-beta).
 
 **Scope/limitation:** this guards OpenCode's file-read tool (the common accidental-exposure path). It does **not** restrict shell commands, so an explicit `cat secrets.yaml` can still read the file — treat it as a strong guardrail, not a hard sandbox.
 
@@ -869,8 +869,10 @@ Supported native root fields are `$schema`, `model`, `default_agent`,
 `providers`, boolean `formatter`, `compaction`, `media`, `tool_output` and `websearch`.
 Nested settings are checked against the pinned native V2 schema. Unsupported
 fields and invalid values stop V2 activation for that boot, preserving the saved
-options for correction. Managed permissions, agents, plugins, snapshots, LSP,
-runtime selection and integration policy cannot be overridden here.
+options for correction. Direct permissions, agents, snapshots, LSP, runtime
+selection and integration policy overrides are unsupported here. Native `plugins`
+entries are accepted only when **Enable third-party plugins** is on; otherwise
+they are ignored without changing the saved options. See [Third-party plugins](#third-party-plugins-beta).
 
 Supported legacy `provider` entries are converted in memory at startup, without
 rewriting saved options: `npm: "@ai-sdk/openai-compatible"` uses the built-in V2
@@ -879,7 +881,7 @@ separated), and `api` becomes `settings.baseURL`. Model `id`, `tool_call`,
 `modalities`, token limits, cache pricing and variant maps are retained in their
 V2 forms. Built-in provider overlays may omit `npm`. Other legacy packages or
 unsupported model fields require explicit native conversion; no arbitrary npm
-code is loaded. Keep each entry entirely legacy or native, and do not define the
+provider code is loaded. Keep each entry entirely legacy or native, and do not define the
 same provider in both maps. The converted result must pass all native schema,
 credential and managed-policy checks.
 
@@ -918,6 +920,74 @@ reserved. Other variables retain separate shell/service handling and generate
 a warning; cloud credential chains and general environment parity remain under
 development. Ordinary provider keys are not isolated from backend subprocesses.
 Do not paste keys into chat. Native `/connect` account setup remains available.
+
+### Third-party plugins (Beta)
+
+**Enable third-party plugins** (`custom_plugins_enabled`) is **off by default**.
+This is a thin opt-in to [upstream OpenCode V2 plugin loading](https://opencode.ai/v2/docs/plugins),
+not an add-on plugin manager or a promise of compatibility with any particular
+plugin, including Magic Context. The add-on does not curate packages, install
+plugins itself, or implement an updater.
+
+Enable the option, add native V2 `plugins` entries to **Custom OpenCode
+configuration**, save and **restart the app**. Merge this into your existing
+JSON rather than replacing unrelated settings:
+
+```json
+{
+  "plugins": [
+    "opencode-example-plugin@1.2.0",
+    {
+      "package": "/data/plugins/my-plugin",
+      "options": { "enabled": true }
+    }
+  ]
+}
+```
+
+The package and local path above are illustrative; choose a real V2-compatible
+plugin and follow its documentation. Native string/object entries, package
+specifications, options and enable/disable selectors pass through to upstream
+after the bundled entries. Upstream's loader owns installation, caching,
+version checks, reloads and errors. Exact versions/commit pins are recommended;
+unpinned versions follow the bundled upstream runtime's behavior. Changing the
+saved package specification and restarting is the durable way to select a new
+version. The add-on does not update or pin it for you, and an app upgrade can
+change upstream compatibility or loader behavior.
+
+**Configuration and persistence:** saved add-on options survive restarts and
+updates and regenerate `/run/opencode-v2/managed.json` at every start. Edits to
+generated `/run` configuration are not durable; do not rely on an upstream CLI
+installer/setup wizard changing another config file to register your plugin.
+Project config/discovery restrictions remain unchanged: placing a plugin under
+`/homeassistant/.opencode/plugins` does not enable it. Configure local plugins by
+absolute paths under a persistent directory such as `/data/plugins/my-plugin`;
+relative paths resolve from the generated configuration, not `/homeassistant`.
+The backend's XDG cache root is persistent `/data/v2/cache`; upstream owns the
+package-cache layout. This cache is excluded from backups and can be rebuilt. Plugin-specific configuration
+and data must use persistent paths supported by that plugin. The server's HOME
+and config directory are under temporary `/run`; do not assume a plugin's
+default settings or memory files there will survive. No plugin-specific storage
+migration or recovery is provided. Client/TUI-only plugin configuration is
+separate and is not enabled by this backend option.
+
+**Trust and support:** third-party plugins execute as **root-level code inside
+the backend**, not as sandboxed AI tools. Tool permissions, sensitive-file read
+restrictions and the read-only agent do not constrain direct plugin code. A
+plugin can read files/credentials, access the network, retain or transmit home
+data, change behavior or policy, and interfere with bundled context/MCP/LSP
+plugins. Upstream selectors can also disable bundled entries. Background model
+calls may add costs. Only enable code you trust; plugin-specific compatibility,
+privacy, updates and behavior are your responsibility. Generic plugin loading
+does not mean any particular third-party plugin has been tested by this add-on.
+
+**Recovery:** turn **Enable third-party plugins** off in the Home Assistant app
+options, save and restart. Saved `plugins` entries are ignored before their
+validation/loading, even if an entry is malformed, and are not deleted. Bundled
+plugin entries are generated normally. This bypasses custom loading, but cannot
+undo files, data or other changes a plugin already made. Invalid JSON or unrelated
+invalid configuration still needs correction. Reproduce add-on issues with this
+option off before reporting them; report plugin-specific failures upstream.
 
 ### Lemonade Server (local models)
 
@@ -966,7 +1036,8 @@ to avoid truncating tools and instructions (see [MCP Tool Profiles](#mcp-tool-pr
 ### External MCP servers
 
 Use **External MCP configuration** for additional MCP servers. This is separate
-from `opencode_config` so managed plugins and permissions remain locked. The
+from `opencode_config` so MCP registration and tool permissions remain explicitly
+configured; it does not enable third-party plugins. The
 option accepts a JSON object with `servers` and optional ordered `permissions`.
 External tools default to `ask`; later permission entries override that default.
 

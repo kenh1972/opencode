@@ -166,6 +166,8 @@ options:
   # Backend forwarding supports non-reserved provider *_API_KEY variables only.
   # Other variables retain separate shell/service handling, with a warning.
   env_vars: []
+  # Trust user-configured plugins as backend code; upstream handles loading.
+  custom_plugins_enabled: false
   # Validated V2 subset with bounded legacy provider conversion; invalid fields stop activation.
   opencode_config: ""
   # Bounded external MCP definitions and their ordered tool permissions.
@@ -233,6 +235,7 @@ schema:
   env_vars:
     - name: str
       value: str
+  custom_plugins_enabled: bool
   opencode_config: str?
   external_mcp_config: str?
   user_hooks_enabled: bool
