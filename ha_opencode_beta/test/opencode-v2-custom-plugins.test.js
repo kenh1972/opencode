@@ -29,7 +29,15 @@ describe("opt-in upstream V2 plugin configuration", () => {
     const translation = parse(await readFile(new URL("translations/en.yaml", addon), "utf8"));
     assert.equal(config.options.custom_plugins_enabled, false);
     assert.equal(config.schema.custom_plugins_enabled, "bool");
-    assert.deepEqual(Object.keys(config.options), Object.keys(config.schema));
+    // Supervisor merges image defaults into saved options. Native defaults must
+    // instead be resolved by startup with fresh/legacy installation provenance.
+    const startupNativeKeys = ["native_ha_mcp_enabled", "native_ha_mcp_selection", "native_ha_mcp_api_id"];
+    for (const key of startupNativeKeys) {
+      assert.equal(Object.hasOwn(config.options, key), false, `${key} must not acquire an image default`);
+      assert.match(config.schema[key], /\?$/);
+      assert.ok(translation.configuration[key], `${key} needs configuration help`);
+    }
+    assert.deepEqual(Object.keys(config.options), Object.keys(config.schema).filter((key) => !startupNativeKeys.includes(key)));
     assert.equal(translation.configuration.custom_plugins_enabled.name, "Enable third-party plugins");
     assert.match(translation.configuration.custom_plugins_enabled.description, /root-level.*Turn off and restart/);
   });
