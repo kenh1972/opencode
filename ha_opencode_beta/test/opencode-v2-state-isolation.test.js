@@ -143,6 +143,18 @@ describe("OpenCode V2 state isolation", () => {
     );
   });
 
+  it("verifies native settings before rewriting provenance markers and stages shared infrastructure independently", () => {
+    const nativeMigration = init.indexOf("node /opt/opencode-v2-homeassistant/mcp-startup.js");
+    const versionMarker = init.indexOf('> /data/.addon_version');
+    assert.ok(nativeMigration >= 0 && nativeMigration < versionMarker);
+    assert.match(init, /--mcp-settings-file/);
+    assert.match(init, /V2_NATIVE_MCP_ENABLED=\$\(\[ "\$\{NATIVE_HA_MCP_ENABLED\}" = "true" \]/);
+    assert.match(init, /if \[ "\$\{V2_SIDECAR_REQUIRED\}" = "true" \]/);
+    assert.match(init, /MCP_STARTUP_READY=false/);
+    assert.match(init, /NATIVE_HA_MCP_ENABLED=false/);
+    assert.match(init, /catalogue loading are pending/);
+  });
+
   it("migrates sessions without importing V1 provider credentials", () => {
     assert.doesNotMatch(migrator, /auth\.json/);
     assert.match(migrator, /validate_no_credentials/);
@@ -232,7 +244,9 @@ describe("OpenCode V2 state isolation", () => {
     assert.match(secureLauncher, /execve\(child_argv\[0\], child_argv, environ\)/);
     assert.doesNotMatch(secureLauncher, /--client|client-credential|publish_expected_client/);
     assert.doesNotMatch(credentialBroker, /client_mode|client-credential|validate_expected_client/);
-    assert.match(v2Server, /http:\/\/127\.0\.0\.1:8765\/mcp/);
+    assert.match(v2Server, /SIDECAR_HEALTH_PATH=mcp/);
+    assert.match(v2Server, /SIDECAR_HEALTH_PATH=native-mcp/);
+    assert.match(v2Server, /http:\/\/127\.0\.0\.1:8765\/\$\{SIDECAR_HEALTH_PATH\}/);
     assert.match(v2Server, /sidecar is not ready"\n        exit 1/);
     const sidecarReadyCheck = v2Server.indexOf("SIDECAR_READY=false");
     const serverLaunch = v2Server.indexOf("exec /usr/local/bin/opencode-v2-launch");

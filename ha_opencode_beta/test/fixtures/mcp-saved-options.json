@@ -1,0 +1,103 @@
+[
+  {
+    "name": "fresh defaults",
+    "provenance": "new",
+    "options": {},
+    "expected": { "bundled": true, "native": true, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true }
+  },
+  {
+    "name": "fresh explicit disabled native",
+    "provenance": "new",
+    "options": { "native_ha_mcp_enabled": false },
+    "expected": { "bundled": true, "native": false, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true }
+  },
+  {
+    "name": "legacy missing native settings",
+    "provenance": "legacy",
+    "options": {},
+    "expected": { "bundled": true, "native": false, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true, "selectionMigration": "assist_to_home_assistant" }
+  },
+  {
+    "name": "legacy explicit disabled native",
+    "provenance": "legacy",
+    "options": { "mcp_enabled": true, "native_ha_mcp_enabled": false, "native_ha_mcp_api_id": "assist" },
+    "expected": { "bundled": true, "native": false, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true, "selectionMigration": "assist_to_home_assistant" }
+  },
+  {
+    "name": "legacy effective native disabled by bundled toggle",
+    "provenance": "legacy",
+    "options": { "mcp_enabled": false, "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "assist" },
+    "expected": { "bundled": false, "native": false, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": false, "selectionMigration": "assist_to_home_assistant" }
+  },
+  {
+    "name": "legacy enabled Assist migrates to HA configuration",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "assist" },
+    "expected": { "bundled": true, "native": true, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true, "selectionMigration": "assist_to_home_assistant" }
+  },
+  {
+    "name": "legacy empty ID follows HA configuration",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "" },
+    "expected": { "bundled": true, "native": true, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true }
+  },
+  {
+    "name": "legacy custom API and configuration profile",
+    "provenance": "legacy",
+    "options": { "mcp_tool_profile": "configuration", "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "my-api.123" },
+    "expected": { "bundled": true, "native": true, "selection": "custom", "apiId": "my-api.123", "mode": "auto", "hab": false }
+  },
+  {
+    "name": "legacy endpoint override ignores saved keyed ID",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "assist" },
+    "overrides": { "HA_NATIVE_MCP_ENDPOINT_MODE": "configured" },
+    "expected": { "bundled": true, "native": true, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true }
+  },
+  {
+    "name": "legacy strict custom API",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "custom-api" },
+    "overrides": { "HA_NATIVE_MCP_ENDPOINT_MODE": "keyed" },
+    "expected": { "bundled": true, "native": true, "selection": "custom", "apiId": "custom-api", "mode": "keyed", "hab": true }
+  },
+  {
+    "name": "legacy strict Assist migrates to HA configuration",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "assist" },
+    "overrides": { "HA_NATIVE_MCP_ENDPOINT_MODE": "keyed" },
+    "expected": { "bundled": true, "native": true, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true, "selectionMigration": "assist_to_home_assistant" }
+  },
+  {
+    "name": "legacy Assist override migrates rather than restoring saved custom API",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "unused-custom-api" },
+    "overrides": { "HA_NATIVE_MCP_API_ID": "assist" },
+    "expected": { "bundled": true, "native": true, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": true, "selectionMigration": "assist_to_home_assistant" }
+  },
+  {
+    "name": "legacy custom override is preserved instead of migrating saved Assist",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": true, "native_ha_mcp_api_id": "assist" },
+    "overrides": { "HA_NATIVE_MCP_API_ID": "custom-override" },
+    "expected": { "bundled": true, "native": true, "selection": "custom", "apiId": "custom-override", "mode": "auto", "hab": true }
+  },
+  {
+    "name": "legacy disabled custom API remains custom and disabled",
+    "provenance": "legacy",
+    "options": { "native_ha_mcp_enabled": false, "native_ha_mcp_api_id": "custom-api" },
+    "expected": { "bundled": true, "native": false, "selection": "custom", "apiId": "custom-api", "mode": "auto", "hab": true }
+  },
+  {
+    "name": "current native-only Assist is independent",
+    "provenance": "current",
+    "options": { "mcp_enabled": false, "native_ha_mcp_enabled": true, "native_ha_mcp_selection": "assist", "native_ha_mcp_api_id": "" },
+    "expected": { "bundled": false, "native": true, "selection": "assist", "apiId": "assist", "mode": "keyed", "hab": false }
+  },
+  {
+    "name": "current neither enabled",
+    "provenance": "current",
+    "options": { "mcp_enabled": false, "native_ha_mcp_enabled": false, "native_ha_mcp_selection": "home_assistant", "native_ha_mcp_api_id": "" },
+    "expected": { "bundled": false, "native": false, "selection": "home_assistant", "apiId": null, "mode": "configured", "hab": false }
+  }
+]

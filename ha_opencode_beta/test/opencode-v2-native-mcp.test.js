@@ -12,24 +12,31 @@ import { OpenCode } from "../rootfs/opt/opencode-v2-homeassistant/node_modules/@
 import { createNativeMcpHandler } from "../rootfs/opt/ha-mcp-server/lib/native-mcp-handler.js";
 import { contextUri, nativeResult, tools } from "../rootfs/opt/ha-mcp-server/test/fixtures/ha-native-2026.10.mjs";
 import { buildReadOnlyPermissions } from "../rootfs/opt/opencode-v2-homeassistant/managed-config.js";
+import { resolveMcpConfiguration } from "../rootfs/opt/opencode-v2-homeassistant/mcp-config.js";
 
 const runtime = fileURLToPath(new URL("../rootfs/opt/opencode-v2-homeassistant/", import.meta.url));
 
-test("pinned V2 consumes HA prompts and live context, lists resources and enforces native tool policy", { timeout: 45000 }, async () => {
+for (const scenario of [
+  { name: "bundled plus native Assist", bundled: true, selection: "assist", apiId: "", prompt: "Assist", path: "/api/mcp/assist" },
+  { name: "native-only HA configuration", bundled: false, selection: "home_assistant", apiId: "", prompt: "YourMcpApi", path: "/api/mcp" },
+  { name: "native-only specific API", bundled: false, selection: "custom", apiId: "fixture-api", prompt: "FixtureApi", path: "/api/mcp/fixture-api" },
+]) {
+test(`pinned V2 loads first-session tools, prompts and resources with ${scenario.name}`, { timeout: 45000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "ha-native-v2-"));
-  const requests = [], generations = [], nextCalls = [];
+  const requests = [], bridgePaths = [], generations = [], nextCalls = [];
   let server, logs = "", snapshot = "fixture snapshot one";
   const upstream = createServer(async (req, res) => {
     const parts = [];
     for await (const part of req) parts.push(part);
     const message = JSON.parse(Buffer.concat(parts));
     requests.push({ path: req.url, message, authorization: req.headers.authorization });
-    const result = nativeResult(message, { snapshot });
+    const result = nativeResult(message, { snapshot, promptName: scenario.prompt });
     res.writeHead(result ? 200 : 202, { "content-type": "application/json" });
     res.end(result ? JSON.stringify(result) : undefined);
   });
   let handler;
   const bridge = createServer(async (req, res) => {
+    bridgePaths.push(req.url);
     if (req.method !== "POST") { res.writeHead(405); res.end(); return; }
     if (req.headers.authorization !== `Bearer ${"a".repeat(64)}`) { res.writeHead(401); res.end(); return; }
     const parts = [];
@@ -61,7 +68,12 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
   try {
     for (const name of ["home", "config", "data", "state", "cache", "project"]) await mkdir(join(root, name));
     for (const mock of [upstream, bridge, provider]) await new Promise((resolve) => mock.listen(0, "127.0.0.1", resolve));
-    handler = createNativeMcpHandler({ supervisorToken: "fixture-supervisor", baseUrl: `http://127.0.0.1:${upstream.address().port}/api` });
+    const resolved = resolveMcpConfiguration({ provenance: "current", options: {
+      mcp_enabled: scenario.bundled, native_ha_mcp_enabled: true,
+      native_ha_mcp_selection: scenario.selection, native_ha_mcp_api_id: scenario.apiId,
+    } });
+    handler = createNativeMcpHandler({ supervisorToken: "fixture-supervisor", baseUrl: `http://127.0.0.1:${upstream.address().port}/api`,
+      apiId: resolved.native.apiId, endpointMode: resolved.native.endpointMode });
     // Exercise the production registration path. Replace only the native FFI
     // credential broker with a synthetic credential in this isolated fixture.
     const pluginDir = join(root, "fixture-plugin");
@@ -69,8 +81,22 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
     await writeFile(join(pluginDir, "package.json"), JSON.stringify({ name: "native-fixture", type: "module", exports: "./index.js" }));
     await writeFile(join(pluginDir, "index.js"), `
       import { Plugin } from "@opencode/plugin";
+      import { Rpc } from "@opencode/plugin/rpc";
       import { createSetup } from ${JSON.stringify(pathToFileURL(join(runtime, "plugin.js")).href)};
-      export default Plugin.define({ id: "native-fixture", setup: createSetup({ readSecret: async () => "a".repeat(64) }) });
+      const readiness = Rpc.define({ id: "native-fixture-readiness", methods: { tools: {
+        input: { type: "object", properties: {}, additionalProperties: false },
+        output: { type: "array", items: { type: "string" } },
+        errors: {},
+      } }, events: {} });
+      export default Plugin.define({ id: "native-fixture", async setup(ctx) {
+        const cleanup = await createSetup({ readSecret: async () => "a".repeat(64) })(ctx);
+        // Test-only read of the real registry: no production API, remote tool
+        // invocation, home snapshot or model warmup is used as a readiness proxy.
+        const registration = await ctx.rpc.register(readiness, {
+          tools: async () => (await ctx.tool.list()).map(({ id }) => id),
+        });
+        return async () => { await registration.dispose(); await cleanup(); };
+      } });
     `);
     const configPath = join(root, "managed.json");
     await writeFile(configPath, JSON.stringify({
@@ -80,7 +106,11 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
         settings: { baseURL: `http://127.0.0.1:${provider.address().port}/v1` },
         models: { coding: { modelID: "fixture", capabilities: { tools: true, input: ["text"], output: ["text"] }, limit: { context: 32000, output: 1000 } } },
       } },
-      plugins: [{ package: pathToFileURL(pluginDir).href, options: { endpoint: `http://127.0.0.1:${bridge.address().port}/mcp`, nativeEnabled: true } }],
+      plugins: [{ package: pathToFileURL(pluginDir).href, options: {
+        bundledEnabled: resolved.bundled.enabled,
+        ...(resolved.bundled.enabled ? { endpoint: `http://127.0.0.1:${bridge.address().port}/mcp` } : {}),
+        nativeEnabled: true, nativeEndpoint: `http://127.0.0.1:${bridge.address().port}/native-mcp`,
+      } }],
       permissions: [{ action: "*", resource: "*", effect: "allow" }],
       agents: { "fixture-reader": { mode: "primary", permissions: buildReadOnlyPermissions() } },
     }));
@@ -102,14 +132,42 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
     }
     assert.ok(ready, "isolated pinned server readiness");
     assert.equal((await client.server.info()).version, "2.0.26");
-    let session = await client.session.create({ title: "warmup fixture" });
+    // Location/plugin activation and catalog loading are asynchronous in 2.0.26.
+    // Wait for the actual MCP connection, not prompts or a warmup model request.
+    let connectionReady = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const connections = (await client.mcp.list()).data;
+      if (connections.find(({ name }) => name === "homeassistant_native")?.status.status === "connected") {
+        connectionReady = true; break;
+      }
+      await sleep(50);
+    }
+    assert.ok(connectionReady, "native connection must become ready; plugin=" +
+      JSON.stringify((await client.plugin.list()).data.find(({ id }) => id === "native-fixture")?.state));
+    assert.deepEqual((await client.mcp.list()).data.map(({ name }) => name).sort(),
+      (scenario.bundled ? ["homeassistant", "homeassistant_native"] : ["homeassistant_native"]));
+    let toolIds = [];
+    for (let attempt = 0; attempt < 100; attempt++) {
+      toolIds = (await client.rpc.call({ rpcID: "native-fixture-readiness", method: "tools", input: {} })).output;
+      if (tools.every(({ name }) => toolIds.includes(`homeassistant_native_${name}`))) break;
+      await sleep(50);
+    }
+    assert.ok(tools.every(({ name }) => toolIds.includes(`homeassistant_native_${name}`)),
+      "actual native tool registry must load before the first provider request");
+    let session = await client.session.create({ title: "first-session fixture" });
     await client.session.prompt({ sessionID: session.id, text: "Reply briefly without using tools." });
     await client.session.wait({ sessionID: session.id }, { signal: AbortSignal.timeout(10000) });
-    // Location/plugin activation and catalog loading are asynchronous in 2.0.13.
+    assert.ok(generations.length > 0, "first session must reach the synthetic provider");
+    const firstTools = generations[0].tools.map(({ function: fn }) => fn);
+    for (const tool of tools) {
+      const emitted = firstTools.find(({ name }) => name === `homeassistant_native_${tool.name}`);
+      assert.ok(emitted, `first provider request must include ${tool.name}; tools=${JSON.stringify(firstTools.map(({ name }) => name))}; methods=${JSON.stringify(requests.map(({ message }) => message.method))}`);
+      assert.deepEqual(emitted.parameters.required, tool.inputSchema.required);
+    }
     let catalogReady = false;
     for (let attempt = 0; attempt < 100; attempt++) {
       const commands = await client.command.list();
-      if (commands.data.some(({ name }) => name === "homeassistant_native:Assist")) { catalogReady = true; break; }
+      if (commands.data.some(({ name }) => name === `homeassistant_native:${scenario.prompt}`)) { catalogReady = true; break; }
       await sleep(50);
     }
     assert.ok(catalogReady, "native prompt catalog must load; commands=" +
@@ -120,11 +178,11 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
     assert.equal(requests.filter(({ message }) => ["prompts/get", "resources/read", "tools/call"].includes(message.method)).length, 0,
       "catalog loading must not fetch a home snapshot");
     session = await client.session.create({ title: "native fixture" });
-    await client.session.command({ sessionID: session.id, name: "homeassistant_native:Assist", text: "" });
+    await client.session.command({ sessionID: session.id, name: `homeassistant_native:${scenario.prompt}`, text: "" });
     await client.session.wait({ sessionID: session.id }, { signal: AbortSignal.timeout(10000) });
-    assert.ok(requests.some(({ message }) => message.method === "prompts/get" && message.params.name === "Assist"));
+    assert.ok(requests.some(({ message }) => message.method === "prompts/get" && message.params.name === scenario.prompt));
     assert.ok(generations.length > 0, "prompt command must reach the provider");
-    assert.ok(JSON.stringify(generations.at(-1).messages).includes("selected API prompt: Assist"));
+    assert.ok(JSON.stringify(generations.at(-1).messages).includes(`selected API prompt: ${scenario.prompt}`));
     assert.ok(JSON.stringify(generations.at(-1).messages).includes("Native tool errors are failures"));
     await client.session.prompt({ sessionID: session.id, text: "Use the selected API for the following requests." });
     await client.session.wait({ sessionID: session.id }, { signal: AbortSignal.timeout(10000) });
@@ -155,7 +213,8 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
     assert.equal(generations.at(-1).tools.some(({ function: fn }) => fn.name === liveName), false);
     assert.equal(requests.filter(({ message }) => message.method === "tools/call").length, calls.length,
       "readOnlyHint must not override the read-only agent's native MCP deny rule");
-    assert.equal(requests.every(({ path }) => path === "/api/mcp/assist"), true);
+    assert.equal(requests.every(({ path }) => path === scenario.path), true);
+    if (!scenario.bundled) assert.equal(bridgePaths.includes("/mcp"), false, "native-only must not contact the bundled route");
     assert.equal(requests.every(({ authorization }) => authorization === "Bearer fixture-supervisor"), true);
     assert.ok(!logs.includes("fixture-supervisor"));
   } finally {
@@ -170,3 +229,4 @@ test("pinned V2 consumes HA prompts and live context, lists resources and enforc
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
+}

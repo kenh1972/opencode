@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+## 3.2.2b1
+
+- Enable native MCP independently on new installs and migrate legacy Assist selections once to HA-configured `/api/mcp`, preserving custom APIs and disabled states with verified startup persistence.
+- Keep bundled, native and external MCP activation independent; Full bundled tools retain HAB access and disabled bundled routes reject stale clients.
 - Add default-off third-party plugin loading through upstream V2, with documented trust, persistence and disable-to-recover behavior ([#166](https://github.com/magnusoverli/opencode/issues/166)).
-- Clarify HA 2026.10 MCP setup, Assist versus Your MCP API, and the reverse read-only connection in docs and configuration help; defaults are unchanged.
+- Document native selection, HA-side prerequisites, the broader HA-configured catalogue and backup-based rollback; the app never changes HA's MCP configuration.
+- Startup migration has automated persistence/recovery coverage; installed Supervisor fresh-install, upgrade and rollback acceptance remains unverified for this beta.
 
 ## 3.2.2b0
 

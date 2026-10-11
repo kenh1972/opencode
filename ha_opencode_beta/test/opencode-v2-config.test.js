@@ -92,6 +92,7 @@ describe("OpenCode V2 managed configuration", () => {
       {
         package: DEFAULT_PLUGIN_PACKAGE,
         options: {
+          bundledEnabled: true,
           endpoint: DEFAULT_MCP_ENDPOINT,
           nativeEnabled: false,
           nativeEndpoint: DEFAULT_NATIVE_MCP_ENDPOINT,
@@ -108,6 +109,17 @@ describe("OpenCode V2 managed configuration", () => {
     assert.equal(options.nativeEnabled, true);
     assert.equal(options.nativeEndpoint, DEFAULT_NATIVE_MCP_ENDPOINT);
     assert.doesNotMatch(JSON.stringify(config), /SUPERVISOR_TOKEN|Bearer |server-password/);
+  });
+
+  it("builds independent native-only configuration without bundled profile instructions", () => {
+    const config = buildManagedConfig({ pluginEnabled: false, nativeMcpEnabled: true });
+    const plugin = config.plugins.find(({ package: name }) => name === DEFAULT_PLUGIN_PACKAGE);
+    assert.equal(plugin.options.bundledEnabled, false);
+    assert.equal(plugin.options.nativeEnabled, true);
+    const files = config.plugins.find(({ package: name }) => name === DEFAULT_CONTEXT_PACKAGE).options.files;
+    assert.ok(files.includes("/opt/ha-mcp-server/MCP_NATIVE_INSTRUCTIONS.md"));
+    assert.equal(files.some((file) => /MCP_PROFILE_|MCP_CORE_/.test(file)), false);
+    assert.deepEqual(config.agents[READ_ONLY_AGENT_ID].permissions, buildReadOnlyPermissions());
   });
 
   it("defines a V2-native read-only agent whose final rules fail closed", () => {

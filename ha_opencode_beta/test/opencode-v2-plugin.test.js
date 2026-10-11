@@ -23,6 +23,7 @@ describe("Home Assistant OpenCode V2 plugin", () => {
 
   it("normalizes a safe loopback endpoint and timeout defaults", () => {
     assert.deepEqual(parseOptions(DEFAULT_OPTIONS), {
+      bundledEnabled: true,
       endpoint: "http://127.0.0.1:43110/mcp",
       nativeEnabled: false,
       nativeEndpoint: "http://127.0.0.1:43110/native-mcp",
@@ -227,6 +228,33 @@ describe("Home Assistant OpenCode V2 plugin", () => {
     );
     assert.doesNotMatch(JSON.stringify(options), new RegExp(CALLER_SECRET));
     await cleanup();
+  });
+
+  it("registers native-only without registering bundled tools", async () => {
+    const registered = new Map();
+    let reads = 0;
+    const cleanup = await createSetup({ readSecret: () => { reads++; return CALLER_SECRET; } })({
+      options: { bundledEnabled: false, nativeEnabled: true, nativeEndpoint: "http://127.0.0.1:43110/native-mcp" },
+      mcp: { async transform(callback) { callback(registered); return { async dispose() {} }; } },
+    });
+    assert.equal(reads, 1);
+    assert.deepEqual([...registered.keys()], [NATIVE_MCP_SERVER_NAME]);
+    assert.equal(registered.get(NATIVE_MCP_SERVER_NAME).headers.Authorization, `Bearer ${CALLER_SECRET}`);
+    await cleanup();
+  });
+
+  it("does not acquire credentials or register anything when both HA connections are disabled", async () => {
+    const cleanup = await createSetup({ readSecret() { assert.fail("must not read the sidecar secret"); } })({
+      options: { bundledEnabled: false, nativeEnabled: false },
+      mcp: { transform() { assert.fail("must not register a disabled connection"); } },
+    });
+    await cleanup();
+  });
+
+  it("requires a native endpoint in native-only configuration and validates disabled supplied endpoints", () => {
+    assert.throws(() => parseOptions({ bundledEnabled: false, nativeEnabled: true }), /nativeEndpoint.*required/);
+    assert.throws(() => parseOptions({ bundledEnabled: false, nativeEndpoint: "https://remote.test/native-mcp" }), /plain loopback/);
+    assert.throws(() => parseOptions({ bundledEnabled: "false" }), /bundledEnabled.*true or false/);
   });
 
   it("keeps the default export on the pinned Plugin.define setup contract", () => {

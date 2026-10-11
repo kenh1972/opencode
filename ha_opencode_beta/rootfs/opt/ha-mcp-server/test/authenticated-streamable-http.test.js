@@ -174,6 +174,24 @@ describe("authenticated Streamable HTTP transport", () => {
     expect(result.content).toEqual([{ type: "text", text: "complete" }]);
   }, 20_000);
 
+  it("rejects stale bundled-route clients in native-only mode", async () => {
+    const handler = vi.fn(async (message) => ({ jsonrpc: "2.0", id: message.id, result: { tools: [] } }));
+    const baseUrl = await startTestServer({ bundledEnabled: false, jsonRpcHandlers: { "/native-mcp": handler } });
+    for (const method of ["POST", "DELETE"]) {
+      const response = await fetch(`${baseUrl}/mcp`, { ...initializeRequest(), method,
+        headers: { ...initializeRequest().headers, authorization: `Bearer ${SECRET}`, "mcp-session-id": "stale-session" },
+      });
+      expect(response.status).toBe(404);
+    }
+    expect((await fetch(`${baseUrl}/native-mcp`, initializeRequest())).status).toBe(401);
+    const response = await fetch(`${baseUrl}/native-mcp`, { ...initializeRequest(),
+      headers: { ...initializeRequest().headers, authorization: `Bearer ${SECRET}` },
+    });
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect((await fetch(`${baseUrl}/native-mcp/extra`, initializeRequest())).status).toBe(404);
+  });
+
   it("delivers cancellation while an authenticated tool call is running", async () => {
     let startedResolve;
     let abortedResolve;

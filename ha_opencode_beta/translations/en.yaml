@@ -35,8 +35,8 @@ configuration:
     description: "Ask OpenCode for action-first, concise, progress-aware replies that are quicker to scan and act on. Changes response wording only — it does not change permissions or safety confirmations."
 
   mcp_enabled:
-    name: "MCP integration"
-    description: "Let OpenCode query your entities and call services through its built-in Model Context Protocol (MCP) server, so you can ask it to turn on the living room lights or check the bedroom temperature."
+    name: "OpenCode Home Assistant tools"
+    description: "Enables the bundled configuration, validation, diagnostics and administration tools. Independent of Home Assistant native tools and external MCP servers; the Full profile includes the authenticated HAB CLI gateway."
 
   mcp_tool_profile:
     name: "MCP tool profile"
@@ -59,12 +59,16 @@ configuration:
     description: "Long-lived access token for talking to Home Assistant Core directly. Required by the screenshot tool above and by the ESPHome commands — leave empty if you use neither. Create one in Home Assistant under Profile → Long-lived access tokens."
 
   native_ha_mcp_enabled:
-    name: "Native Home Assistant MCP bridge (beta)"
-    description: "Adds Home Assistant's native LLM tools alongside this app's bundled MCP tools, without replacing them. HA's MCP Server is built into Core but must be enabled: on HA 2026.10+, use Settings > System > AI > Model Context Protocol; on older versions, add the Model Context Protocol Server integration. Defaults to the Assist URL, not Your MCP API. No URL or access token needs to be pasted. Restart the app after changes; leave this off unless you want to test the native bridge."
+    name: "Home Assistant native tools (beta)"
+    description: "Independent native MCP connection, on for new installs; upgrades preserve effective enabled/disabled state. Requires HA's MCP Server: Settings > System > AI > Model Context Protocol on HA 2026.10+, or the MCP Server integration on older versions. Supervisor supplies authentication; no URL or token needs to be pasted."
+
+  native_ha_mcp_selection:
+    name: "Native tool selection"
+    description: "home_assistant uses Your MCP API (/api/mcp), following HA's configured APIs; Expose all LLM APIs includes later additions. assist selects only Assist, and custom selects the API ID below. Upgrades migrate legacy Assist to home_assistant once, preserve custom choices and disabled states, and retain explicit selections afterward."
 
   native_ha_mcp_api_id:
-    name: "Native MCP API ID"
-    description: "Applies only when the native bridge is on. Matches HA's AI settings: 'assist' (default) uses Assist (/api/mcp/assist); an empty value uses Your MCP API (/api/mcp), combining HA's selected LLM APIs or all registered APIs when Expose all LLM APIs is on. New HA 2026.10 setups default to all APIs, including later additions. Use another registered API ID for a specific API, not a full URL. Supervisor supplies admin authentication. Save and restart the app after changing this."
+    name: "Custom native API ID"
+    description: "Used only when Native tool selection is custom. Enter a registered API ID, not a URL; the bridge uses /api/mcp/<ID>. Existing custom selections retain their previous compatibility policy; newly selected specific APIs do not silently fall back to a broader endpoint."
 
   ha_assist_enabled:
     name: Native Assist and AI data tasks (experimental)

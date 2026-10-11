@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { readFileSync, writeFileSync } from "node:fs";
 import { TOOL_PROFILES } from "../ha-mcp-server/lib/tool-profiles.js";
 import { prepareUserConfig } from "./user-config.js";
+import { resolveMcpConfiguration } from "./mcp-config.js";
 
 export const DEFAULT_PLUGIN_PACKAGE = "file:///opt/opencode-v2-homeassistant/mcp-plugin";
 export const DEFAULT_RUNTIME_GUARD_PACKAGE = "file:///opt/opencode-v2-homeassistant/runtime-guard-plugin";
@@ -83,7 +84,16 @@ export function buildManagedConfig({
   lspEnabled = false,
   assistEnabled = false,
   yamlFormatting = false,
+  mcpSettings,
 } = {}) {
+  // Startup can opt into the shared contract only after establishing provenance
+  // and verifying persistence. Existing CLI flags remain unchanged meanwhile.
+  if (mcpSettings !== undefined) {
+    const resolved = resolveMcpConfiguration(mcpSettings);
+    pluginEnabled = resolved.bundled.enabled;
+    nativeMcpEnabled = resolved.native.enabled;
+    mcpProfile = resolved.bundled.profile;
+  }
   const permissions = [
     { action: "read", resource: "*", effect: "allow" },
     { action: "edit", resource: "*", effect: "ask" },
@@ -106,10 +116,11 @@ export function buildManagedConfig({
 
   const plugins = [
     { package: runtimeGuardPackage },
-    ...(pluginEnabled
+    ...(pluginEnabled || nativeMcpEnabled
       ? [{
         package: pluginPackage,
         options: {
+          bundledEnabled: pluginEnabled,
           endpoint: mcpEndpoint,
           nativeEnabled: nativeMcpEnabled,
           nativeEndpoint: nativeMcpEndpoint,
@@ -127,6 +138,7 @@ export function buildManagedConfig({
         `/opt/ha-mcp-server/MCP_PROFILE_${mcpProfile.toUpperCase()}.md`,
       ]
       : []),
+    ...(nativeMcpEnabled ? ["/opt/ha-mcp-server/MCP_NATIVE_INSTRUCTIONS.md"] : []),
     ...(homeBriefing ? ["/data/context/home-briefing.md"] : []),
     ...(decisionNotes ? ["/data/context/decision-notes.md"] : []),
     ...(userHooks ? ["/opt/ha-mcp-server/USER_HOOKS.md"] : []),
@@ -172,8 +184,11 @@ export function buildManagedConfig({
 
 export function applyExternalMcpConfig(managed, externalMcp) {
   if (!externalMcp || Object.keys(externalMcp.servers).length === 0) return managed;
-  const plugin = managed.plugins.find(({ package: name }) => name === DEFAULT_PLUGIN_PACKAGE);
-  if (!plugin) throw new TypeError("external_mcp_config requires the Home Assistant MCP integration to be enabled");
+  let plugin = managed.plugins.find(({ package: name }) => name === DEFAULT_PLUGIN_PACKAGE);
+  if (!plugin) {
+    plugin = { package: DEFAULT_PLUGIN_PACKAGE, options: { bundledEnabled: false, nativeEnabled: false } };
+    managed.plugins.push(plugin);
+  }
   plugin.options.externalServers = externalMcp.servers;
   managed.permissions.push(...externalMcp.permissions);
   return managed;
@@ -193,6 +208,8 @@ export function parseArguments(argv) {
     if (value === undefined) throw new TypeError(`${name} requires a value`);
     if (name === "--options-file") {
       options.optionsFile = value;
+    } else if (name === "--mcp-settings-file") {
+      options.mcpSettingsFile = value;
     } else if (name === "--environment-output") {
       options.environmentOutput = value;
     } else if (name === "--external-mcp-output") {
@@ -241,6 +258,11 @@ export function parseArguments(argv) {
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   try {
     const args = parseArguments(process.argv.slice(2));
+    if (args.mcpSettingsFile) {
+      try { args.mcpSettings = JSON.parse(readFileSync(args.mcpSettingsFile, "utf8")).settings; }
+      catch { throw new TypeError("Cannot read verified startup MCP settings"); }
+      if (!args.mcpSettings) throw new TypeError("Verified startup MCP settings are missing");
+    }
     const managed = buildManagedConfig(args);
     let externalMcp = { servers: {}, permissions: [] };
     if (args.optionsFile) {

@@ -14,6 +14,7 @@ const SOURCES = new Set([
   "/opt/opencode-v2-homeassistant/WORKSPACE.md",
   "/opt/ha-mcp-server/FOCUS_MODE.md",
   "/opt/ha-mcp-server/MCP_CORE_INSTRUCTIONS.md",
+  "/opt/ha-mcp-server/MCP_NATIVE_INSTRUCTIONS.md",
   "/opt/ha-mcp-server/MCP_PROFILE_COMPACT.md",
   "/opt/ha-mcp-server/MCP_PROFILE_CONFIGURATION.md",
   "/opt/ha-mcp-server/MCP_PROFILE_FULL.md",

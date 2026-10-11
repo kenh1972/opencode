@@ -97,10 +97,10 @@ options:
   # Required for ESPHome ingress and the screenshot tool
   # (create at: Profile → Long-lived access tokens).
   access_token: ""
-  # Optional bridge to Home Assistant Core's native /api/mcp/<API ID> endpoint.
-  # Requires a Home Assistant version that includes the native MCP keyed endpoint.
-  native_ha_mcp_enabled: false
-  native_ha_mcp_api_id: "assist"
+  # Native enabled/selection/API ID have NO image defaults: Supervisor merges
+  # image defaults into saved options. Startup persists fresh=true/home_assistant
+  # versus legacy effective enablement before activation. Fields stay visible
+  # through the optional schema below.
   # Opt-in inbound MCP: automatic trusted-host setup; existing OAuth is retained.
   ha_mcp_server_enabled: false
   ha_assist_enabled: false
@@ -194,7 +194,8 @@ schema:
   yaml_formatting: bool
   screenshot_enabled: bool
   access_token: password
-  native_ha_mcp_enabled: bool
+  native_ha_mcp_enabled: bool?
+  native_ha_mcp_selection: list(home_assistant|assist|custom)?
   native_ha_mcp_api_id: str?
   ha_mcp_server_enabled: bool
   ha_assist_enabled: bool

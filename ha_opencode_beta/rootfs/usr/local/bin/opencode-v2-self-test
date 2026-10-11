@@ -264,6 +264,7 @@ def wait_for(description, probe):
 
 
 def exercise_policy(client, expected_version, mcp_enabled, native_mcp_enabled, reporter, lsp_enabled=False, external_mcp_names=()):
+    mcp_plugin_required = mcp_enabled or native_mcp_enabled or bool(external_mcp_names)
     def authentication_boundary():
         client.request("/api/info", expected=401, authenticated=False, decode=False)
         return True
@@ -289,7 +290,7 @@ def exercise_policy(client, expected_version, mcp_enabled, native_mcp_enabled, r
         }
         if not {"homeassistant.runtime-guard", "homeassistant.context"}.issubset(active):
             return None
-        if mcp_enabled and "homeassistant.mcp" not in active:
+        if mcp_plugin_required and "homeassistant.mcp" not in active:
             return None
         if lsp_enabled and "homeassistant.lsp" not in active:
             return None
@@ -303,7 +304,7 @@ def exercise_policy(client, expected_version, mcp_enabled, native_mcp_enabled, r
         raise SelfTestError("Home Assistant V2 LSP bridge is active while disabled by configuration")
     else:
         reporter.skip("Home Assistant V2 LSP bridge is disabled by configuration")
-    if mcp_enabled:
+    if mcp_plugin_required:
         reporter.ok("Home Assistant V2 MCP plugin is active")
     elif "homeassistant.mcp" in active_plugins:
         raise SelfTestError("Home Assistant V2 MCP plugin is active while disabled by configuration")
@@ -330,6 +331,8 @@ def exercise_policy(client, expected_version, mcp_enabled, native_mcp_enabled, r
     mcp_servers = wait_for("configured V2 MCP servers", connected_mcp_servers)
     if mcp_enabled:
         reporter.ok("Home Assistant V2 MCP server is connected")
+    elif "homeassistant" in mcp_servers:
+        raise SelfTestError("Home Assistant V2 MCP server is present while disabled by configuration")
     if native_mcp_enabled:
         reporter.ok("Native Home Assistant V2 MCP server is connected")
     elif "homeassistant_native" in mcp_servers:

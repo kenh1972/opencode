@@ -17,7 +17,7 @@ fi
 # shellcheck disable=SC1090
 source "${SIDECAR_ENV_FILE}"
 
-if [ "${OPENCODE_MCP_ENABLED:-false}" != "true" ]; then
+if [ "${OPENCODE_MCP_ENABLED:-false}" != "true" ] && [ "${OPENCODE_NATIVE_HA_MCP_ENABLED:-false}" != "true" ]; then
     exec sleep infinity
 fi
 
@@ -59,6 +59,7 @@ exec env -i \
     HA_NATIVE_MCP_API_ID="${HA_NATIVE_MCP_API_ID-assist}" \
     HA_NATIVE_MCP_ENDPOINT_MODE="${HA_NATIVE_MCP_ENDPOINT_MODE:-auto}" \
     HA_NATIVE_MCP_SANITIZE_SCHEMAS="${HA_NATIVE_MCP_SANITIZE_SCHEMAS:-1}" \
+    OPENCODE_MCP_ENABLED="${OPENCODE_MCP_ENABLED:-false}" \
     OPENCODE_MCP_TOOL_PROFILE="${OPENCODE_MCP_TOOL_PROFILE}" \
     OPENCODE_NATIVE_HA_MCP_ENABLED="${OPENCODE_NATIVE_HA_MCP_ENABLED:-false}" \
     OPENCODE_DECISION_NOTES="${OPENCODE_DECISION_NOTES:-false}" \
