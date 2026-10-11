@@ -5,6 +5,15 @@ terminal or OpenChamber web workspace with one shared, app-managed backend.
 
 ## Upgrading to 3.2
 
+Stable **3.2.3** adds desktop/mobile OpenChamber workspace recovery. When a restored
+or reopened directory is confirmed missing, select `/homeassistant` or another
+existing workspace on the recovery screen. Selection is verified through the
+backend and retained across reloads; a new draft opens without moving old
+conversations, changing their directory associations or recreating missing folders.
+If the original directory is restored independently, use **Check again**.
+Network, authentication and permission errors do not trigger directory replacement.
+This does not establish a fix for an unavailable OpenChamber listener on port 3010.
+
 Stable **3.2.2** promotes beta **3.2.2b1**, with OpenCode
 **2.0.26**, OpenChamber **2.2.0** and hab **1.7.2**. Update through Home Assistant Supervisor.
 The first startup validates a private copy of existing V2 state before activation,

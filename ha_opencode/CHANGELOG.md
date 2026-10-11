@@ -3,7 +3,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Recover confirmed missing OpenChamber workspaces on desktop/mobile without moving conversations or recreating missing directories.
 - Promote beta 3.2.2b1 with independent native MCP, verified startup settings migration, persistent TUI preferences and opt-in formatting/plugin controls.
+
+## 3.2.3
+
+- Show an actionable recovery screen when a restored or reopened OpenChamber workspace is confirmed missing; verify an existing workspace, clear stale last-open/URL navigation pointers before opening a new draft, persist selection, and retain historical session directories ([#177](https://github.com/magnusoverli/opencode/issues/177)).
+- Keep transient connection, authentication and permission failures separate from missing-directory recovery. The earlier unexplained `ECONNREFUSED 127.0.0.1:3010` is not claimed fixed.
 
 ## 3.2.2
 

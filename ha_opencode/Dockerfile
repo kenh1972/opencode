@@ -33,10 +33,14 @@ COPY rootfs/opt/openchamber/editor-lsp /tmp/editor-lsp
 RUN node /tmp/patch-editor-lsp.cjs /opt/openchamber-preview
 COPY rootfs/opt/openchamber/patch-usage-model.cjs /tmp/patch-usage-model.cjs
 RUN node /tmp/patch-usage-model.cjs /opt/openchamber-preview
+COPY rootfs/opt/openchamber/patch-workspace-recovery.cjs /tmp/patch-workspace-recovery.cjs
+COPY rootfs/opt/openchamber/workspace-recovery /tmp/workspace-recovery
+RUN node /tmp/patch-workspace-recovery.cjs /opt/openchamber-preview
 # Skip desktop/mobile lifecycle scripts; explicitly build only the SDK/web assets.
 RUN bun install --frozen-lockfile --ignore-scripts \
     && node /tmp/patch-git-environment.cjs /opt/openchamber-preview/packages/web \
     && bun run --cwd packages/sdk build \
+    && bun run --cwd packages/ui type-check \
     && bun run --cwd packages/web build
 RUN --mount=type=bind,source=test/openchamber-model-fixture.cjs,target=/tmp/openchamber-model-fixture.cjs,readonly \
     --mount=type=bind,source=test/openchamber-model-regressions.inc.ts,target=/tmp/openchamber-model-regressions.inc.ts,readonly \
@@ -44,6 +48,8 @@ RUN --mount=type=bind,source=test/openchamber-model-fixture.cjs,target=/tmp/open
     node /tmp/openchamber-model-fixture.cjs /opt/openchamber-preview \
     && (cd packages/ui && bun test src/stores/useConfigStore.test.ts && bun test src/lib/runtime-url.test.ts) \
     && node --test /tmp/openchamber-usage.mjs
+RUN --mount=type=bind,source=test/openchamber-workspace-gate.test.tsx,target=/opt/openchamber-preview/packages/ui/src/components/auth/WorkspaceRecoveryGate.test.tsx,readonly \
+    cd packages/ui && bun test src/components/auth/WorkspaceRecoveryGate.test.tsx
 RUN timeout --signal=TERM --kill-after=10s 180s bun run --cwd packages/web test server/lib/git
 COPY rootfs/opt/openchamber/patch-ingress.js /tmp/patch-ingress.cjs
 RUN node /tmp/patch-ingress.cjs /opt/openchamber-preview/packages/web
