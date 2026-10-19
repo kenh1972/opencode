@@ -65,17 +65,17 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
     async def test_transport_failure_falls_back_with_provenance(self):
         client = Z2MClient('http://ha.invalid','synthetic','http://z2m.invalid')
         client._get_devices_via_ha = AsyncMock(return_value=[{'_diagnostics':{'source':'ha_device_registry'}}])
-        client._get = AsyncMock(side_effect=AssertionError('No legacy REST/auth escalation'))
+        client._get = AsyncMock(side_effect=RuntimeError('REST unavailable'))
         with patch('zigporter.passive_z2m.read_devices', side_effect=PassiveReadError('unavailable')):
             result = await client.get_devices()
         self.assertEqual(result[0]['_diagnostics']['source'], 'ha_device_registry')
         self.assertIn('inventory only',client.last_device_read_warning)
-        client._get.assert_not_called()
+        client._get.assert_awaited_once_with("/api/devices")
 
     async def test_standalone_failure_not_hidden(self):
         client = Z2MClient(None,None,'http://z2m.invalid')
-        with patch('zigporter.passive_z2m.read_devices', side_effect=PassiveReadError('unavailable')):
-            with self.assertRaises(PassiveReadError):
+        with patch('zigporter.passive_z2m.read_devices', side_effect=PassiveReadError('unavailable')), patch.object(client, '_get', AsyncMock(side_effect=RuntimeError('REST unavailable'))):
+            with patch.object(client, '_get', AsyncMock(side_effect=RuntimeError('REST unavailable'))), self.assertRaises(PassiveReadError):
                 await client.get_devices()
 
 class OutputTests(unittest.IsolatedAsyncioTestCase):
@@ -223,7 +223,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
             async with serve(handler,'127.0.0.1',0,ssl=context) as server:
                 port=server.sockets[0].getsockname()[1]
                 client=Z2MClient(None,None,f'https://127.0.0.1:{port}',verify_ssl=False)
-                with self.assertRaises(PassiveReadError):
+                with patch.object(client, '_get', AsyncMock(side_effect=RuntimeError('REST unavailable'))), self.assertRaises(PassiveReadError):
                     await client.get_devices()
 
     async def test_wss_explicit_verified_context_independent_of_ha_flag(self):
@@ -234,11 +234,79 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
                 pass
         with patch('zigporter.passive_z2m.websockets.connect',return_value=Context()) as connect:
             client=Z2MClient(None,None,'https://z2m.invalid',verify_ssl=False)
-            with self.assertRaises(PassiveReadError):
+            with patch.object(client, '_get', AsyncMock(side_effect=RuntimeError('REST unavailable'))), self.assertRaises(PassiveReadError):
                 await client.get_devices()
         context=connect.call_args.kwargs['ssl']
         self.assertTrue(context.check_hostname)
         self.assertEqual(context.verify_mode,ssl.CERT_REQUIRED)
+
+class ReviewRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_rest_and_ingress_inventory_preserved(self):
+        import httpx
+        for ingress in (False, True):
+            with self.subTest(ingress=ingress):
+                requests=[]
+                def handle(request):
+                    requests.append(request)
+                    if request.url.path == '/api/hassio/ingress/session':
+                        return httpx.Response(200,json={'session':'synthetic-session'})
+                    self.assertEqual(request.url.path,'/api/devices')
+                    if ingress and request.headers.get('cookie') != 'ingress_session=synthetic-session':
+                        return httpx.Response(401,text='ingress required')
+                    return httpx.Response(200,json=[dict(DEVICE,type='Router')])
+                original=httpx.AsyncClient
+                def fixture_client(**kwargs):
+                    return original(transport=httpx.MockTransport(handle),**kwargs)
+                client=Z2MClient('http://ha.invalid','synthetic','http://z2m.invalid')
+                client._get_devices_via_ha=AsyncMock(side_effect=AssertionError('No registry fallback'))
+                with patch('zigporter.passive_z2m.read_devices',AsyncMock(side_effect=PassiveReadError('unavailable'))), patch('zigporter.z2m_client.httpx.AsyncClient',side_effect=fixture_client):
+                    result=await client.get_devices()
+                self.assertEqual(result[0]['friendly_name'],DEVICE['friendly_name'])
+                self.assertEqual(result[0]['type'],'Router')
+                self.assertEqual(len(requests),3 if ingress else 1)
+                self.assertIsNone(client.last_device_read_warning)
+                client._get_devices_via_ha.assert_not_called()
+
+    async def test_authenticated_list_command_passes_environment_token(self):
+        from zigporter.commands.list_z2m import run_list_z2m
+        from urllib.parse import urlsplit,parse_qs
+        seen=[];received=[]
+        async def handler(ws):
+            seen.append(parse_qs(urlsplit(ws.request.path).query).get('token'))
+            if seen[-1] != ['synthetic&frontend-token']:
+                await ws.close(4401,'Unauthorized');return
+            await ws.send(json.dumps({'topic':'bridge/devices','payload':[DEVICE]}))
+            async for message in ws:received.append(message)
+        async with serve(handler,'127.0.0.1',0) as server:
+            port=server.sockets[0].getsockname()[1];out=io.StringIO()
+            with patch.dict(os.environ,{'Z2M_FRONTEND_TOKEN':'synthetic&frontend-token'}),patch.object(Z2MClient,'_get',AsyncMock(side_effect=AssertionError('No REST needed'))),redirect_stdout(out):
+                await run_list_z2m('http://ha.invalid','synthetic',f'http://127.0.0.1:{port}',True,json_output=True)
+        self.assertEqual(seen,[['synthetic&frontend-token']]);self.assertEqual(received,[])
+        self.assertEqual(json.loads(out.getvalue())['devices'][0]['friendly_name'],DEVICE['friendly_name'])
+        self.assertNotIn('synthetic&frontend-token',out.getvalue())
+
+    async def test_null_friendly_name_json_and_table(self):
+        from zigporter.commands.list_z2m import run_list_z2m
+        from rich.console import Console
+        fake=type('Fake',(),{'last_device_read_warning':None})()
+        fake.get_devices=AsyncMock(return_value=[dict(DEVICE,friendly_name=None),dict(DEVICE,ieee_address='0x1122334455667788',friendly_name='Other')])
+        for json_output in (True,False):
+            out=io.StringIO()
+            with patch('zigporter.commands.list_z2m.Z2MClient',return_value=fake),patch('zigporter.commands.list_z2m.console',Console(file=out,width=200)),redirect_stdout(out):
+                await run_list_z2m('unused','synthetic','unused',True,json_output=json_output)
+            self.assertIn(IEEE,out.getvalue())
+            if json_output:self.assertEqual(json.loads(out.getvalue())['devices'][0]['friendly_name'],IEEE)
+
+    async def test_passive_null_name_normalized(self):
+        fixture=TransportTests()
+        result=await fixture.fixture([{'topic':'bridge/devices','payload':[dict(DEVICE,friendly_name=None)]}])
+        self.assertEqual(result[0]['friendly_name'],IEEE)
+
+    async def test_direct_failure_redacts_credentials(self):
+        client=Z2MClient(None,None,'http://z2m.invalid')
+        with patch('zigporter.passive_z2m.read_devices',AsyncMock(side_effect=PassiveReadError('secret-token'))),patch.object(client,'_get',AsyncMock(side_effect=RuntimeError('secret-token'))):
+            with self.assertRaises(PassiveReadError) as caught:await client.get_devices()
+        self.assertNotIn('secret-token',str(caught.exception));self.assertIsNone(caught.exception.__cause__)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
