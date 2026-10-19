@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -18,7 +19,8 @@ async def run_list_z2m(
     mqtt_topic: str = "zigbee2mqtt",
     json_output: bool = False,
 ) -> None:
-    client = Z2MClient(ha_url, token, z2m_url, verify_ssl, mqtt_topic)
+    client = Z2MClient(ha_url, token, z2m_url, verify_ssl, mqtt_topic,
+                       z2m_frontend_token=os.environ.get("Z2M_FRONTEND_TOKEN") or None)
 
     if json_output:
         devices = await client.get_devices()
@@ -35,7 +37,7 @@ async def run_list_z2m(
 
     if json_output:
         result = []
-        for d in sorted(devices, key=lambda x: x.get("friendly_name", "").lower()):
+        for d in sorted(devices, key=lambda x: (x.get("friendly_name") or x.get("ieee_address") or "").lower()):
             definition = d.get("definition") or {}
             ieee = d.get("ieee_address") or ""
             result.append(
@@ -65,7 +67,7 @@ async def run_list_z2m(
     table.add_column("Model")
     table.add_column("Power source")
 
-    for d in sorted(devices, key=lambda x: x.get("friendly_name", "").lower()):
+    for d in sorted(devices, key=lambda x: (x.get("friendly_name") or x.get("ieee_address") or "").lower()):
         definition = d.get("definition") or {}
         vendor = definition.get("vendor") or d.get("manufacturer") or ""
         model = definition.get("model") or d.get("model_id") or ""
