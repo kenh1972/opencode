@@ -65,7 +65,9 @@ async def read_devices(base, *, token=None, duration=2.0, max_frames=4096):
                             if not isinstance(d.get('friendly_name'), (str, type(None))):
                                 continue
                             seen.add(ieee)
-                            inventory.append(copy.deepcopy(d))
+                            device = copy.deepcopy(d)
+                            device["friendly_name"] = device.get("friendly_name") or device["ieee_address"]
+                            inventory.append(device)
                     elif isinstance(topic, str) and not topic.startswith('bridge/'):
                         # Keep only diagnostic fields, never configuration or arbitrary state.
                         if topic.endswith('/availability'):

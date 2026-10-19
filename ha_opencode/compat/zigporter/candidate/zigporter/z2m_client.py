@@ -302,9 +302,18 @@ class Z2MClient:
         try:
             return await read_devices(self._z2m_url, token=self._z2m_frontend_token)
         except PassiveReadError:
-            self.last_device_read_warning = "Direct Z2M read unavailable; HA registry inventory only"
+            pass
+        # Preserve published REST and ingress-session authentication behavior.
+        # Registry-only inventory is the last resort, after both direct readers.
+        try:
+            devices = await self._get("/api/devices")
+            if not isinstance(devices, list) or not all(isinstance(d, dict) for d in devices):
+                raise ValueError("Invalid direct inventory")
+            return devices
+        except (RuntimeError, httpx.HTTPError, ValueError, KeyError):
             if not self._ha_url or not self._ha_token:
-                raise
+                raise PassiveReadError("Z2M direct inventory unavailable (passive and REST readers failed)") from None
+            self.last_device_read_warning = "Direct Z2M reads unavailable; HA registry inventory only"
             return await self._get_devices_via_ha()
 
     async def get_device_by_ieee(self, ieee: str) -> dict[str, Any] | None:
